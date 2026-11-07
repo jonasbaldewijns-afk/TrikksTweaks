@@ -1,0 +1,9 @@
+package-as: TrikksTweaks
+
+move-folders:
+  TrikksTweaks/TrikksTweaks: TrikksTweaks
+  TrikksTweaks/TrikksReskin: TrikksReskin
+
+ignore:
+  - README.md
+  - media-curseforge

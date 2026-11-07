@@ -368,6 +368,7 @@ content:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 16, -14)
 content:SetPoint("BOTTOMRIGHT", -12, 10)
 
 local pages, navButtons, currentPage = {}, {}, nil
+local sidebarLayout                       -- set by BuildSidebar, used by the search
 
 local function ShowPage(key)
     for k, p in pairs(pages) do p:SetShown(k == key) end
@@ -412,34 +413,63 @@ local function BuildHome()
     list:SetSize(580, 1)
     scroll:SetScrollChild(list)
 
-    local y = 0
+    local entries = {}
     for _, cat in ipairs(TT.CATEGORIES) do
         local keys = ModulesIn(cat)
         if #keys > 0 then
-            local h = Header(list, cat)
-            h:SetPoint("TOPLEFT", 2, -y)
-            y = y + 18
+            entries[#entries + 1] = { header = Header(list, cat), keys = keys }
             for _, key in ipairs(keys) do
                 local m = TT.modules[key]
                 local row = CreateFrame("Frame", nil, list)
                 row:SetSize(570, 42)
-                row:SetPoint("TOPLEFT", 0, -y)
                 TT.Flat(row, { 1, 1, 1, 0.025 })
                 row.cb = TT.Check(row, m.title, function(v) TT:SetEnabled(key, v) end)
                 row.cb:SetPoint("TOPLEFT", 10, -8)
                 local d = TT.Label(row, m.desc, "GameFontDisableSmall")
                 d:SetPoint("TOPLEFT", 32, -25); d:SetWidth(440); d:SetWordWrap(false)
+                row.desc = d
                 if m.BuildSettings then
                     local sb = TT.Button(row, "Settings", 76, function() ShowPage(key) end)
                     sb:SetPoint("RIGHT", -8, 0)
                 end
                 homeRows[key] = row
-                y = y + 46
             end
-            y = y + 10
         end
     end
-    list:SetHeight(y)
+    local none = TT.Label(list, "No matches.", "GameFontDisable")
+    none:SetPoint("TOPLEFT", 2, -4)
+    -- place the rows under their category; during a search only the matching
+    -- ones (found[key] = true, or the text of the setting that matched)
+    function p.Layout(found)
+        local y = 0
+        for _, e in ipairs(entries) do
+            local any = false
+            for _, key in ipairs(e.keys) do
+                local row, hit = homeRows[key], not found or found[key]
+                row:SetShown(hit and true or false)
+                if hit then
+                    if not any then
+                        any = true
+                        e.header:ClearAllPoints(); e.header:SetPoint("TOPLEFT", 2, -y)
+                        y = y + 18
+                    end
+                    row:ClearAllPoints(); row:SetPoint("TOPLEFT", 0, -y)
+                    y = y + 46
+                    if type(hit) == "string" then
+                        row.desc:SetText("|cff33ff99Setting:|r " .. hit)
+                    else
+                        row.desc:SetText(TT.modules[key].desc or "")
+                    end
+                end
+            end
+            e.header:SetShown(any)
+            if any then y = y + 10 end
+        end
+        none:SetShown(y == 0)
+        list:SetHeight(math.max(1, y))
+        scroll:SetVerticalScroll(0)
+    end
+    p.Layout(nil)
 
     local note = TT.Label(p, "Something stuck after turning a module off? Reload.", "GameFontDisableSmall")
     note:SetPoint("BOTTOMLEFT", 0, 6)
@@ -483,6 +513,7 @@ local function BuildModulePage(key)
     local body = CreateFrame("Frame", nil, scroll)
     body:SetSize(590, 400)
     scroll:SetScrollChild(body)
+    p.body = body
     -- after the page is drawn, measure how far down its content goes
     p.FitBody = function()
         local top, low = body:GetTop(), nil
@@ -504,39 +535,146 @@ end
 
 local function BuildSidebar()
     -- the list of pages can be taller than the window: make it scroll
+    -- (below the search box)
     local scroll = TT.Scroll(sidebar)
-    scroll:SetPoint("TOPLEFT"); scroll:SetPoint("BOTTOMRIGHT", -8, 0)
+    scroll:SetPoint("TOPLEFT", 0, -36); scroll:SetPoint("BOTTOMRIGHT", -8, 0)
     local list = CreateFrame("Frame", nil, scroll)
     list:SetSize(169, 1)
     scroll:SetScrollChild(list)
-    local y = 8
+    local entries = {}
     local function Nav(key, text)
         local b = TT.NavButton(list, text, 160)
         b:SetScript("OnClick", function() ShowPage(key) end)
-        b:SetPoint("TOPLEFT", 0, -y)
         navButtons[key] = b
-        y = y + 24
+        entries[#entries + 1] = { nav = b, key = key }
     end
     Nav("home", "Modules")
-    y = y + 8
     for _, cat in ipairs(TT.CATEGORIES) do
         local keys = {}
         for _, key in ipairs(ModulesIn(cat)) do
             if TT.modules[key].BuildSettings then keys[#keys + 1] = key end
         end
         if #keys > 0 then
-            local h = Header(list, cat)
-            h:SetPoint("TOPLEFT", 12, -y - 4)
-            y = y + 20
+            entries[#entries + 1] = { header = Header(list, cat) }
             for _, key in ipairs(keys) do
                 pages[key] = BuildModulePage(key)
                 Nav(key, TT.modules[key].title)
             end
-            y = y + 8
         end
     end
-    list:SetHeight(y)
+    -- place the entries; a category title only shows when something under it does
+    sidebarLayout = function(found)
+        local y, header = 8, nil
+        for _, e in ipairs(entries) do
+            if e.header then
+                e.header:Hide()
+                header = e.header
+            else
+                local show = e.key == "home" or not found or found[e.key]
+                e.nav:SetShown(show and true or false)
+                if show then
+                    if header then
+                        y = y + 8
+                        header:ClearAllPoints(); header:SetPoint("TOPLEFT", 12, -y - 4); header:Show()
+                        y = y + 20
+                        header = nil
+                    end
+                    e.nav:ClearAllPoints(); e.nav:SetPoint("TOPLEFT", 0, -y)
+                    y = y + 24
+                end
+            end
+        end
+        list:SetHeight(y + 8)
+        scroll:SetVerticalScroll(0)
+    end
+    sidebarLayout(nil)
 end
+
+---------------------------------------------------------------------------
+-- Search (box at the top of the sidebar): filters the sidebar and the
+-- Modules page. Looks at a module's name, description and category, and at
+-- every text on its settings page, so "durability" finds the Minimap.
+---------------------------------------------------------------------------
+local function PageTexts(frame, out, depth)
+    if depth > 8 or (frame.IsForbidden and frame:IsForbidden()) then return out end
+    for _, r in ipairs({ frame:GetRegions() }) do
+        if r:IsObjectType("FontString") then
+            local t = r:GetText()
+            if t and not TT.IsSecret(t) and t ~= "" then out[#out + 1] = t end
+        end
+    end
+    for _, c in ipairs({ frame:GetChildren() }) do PageTexts(c, out, depth + 1) end
+    return out
+end
+
+-- text without colour codes / line breaks, cut to fit one row
+local function Plain(t)
+    t = t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("%s+", " ")
+    t = strtrim(t)
+    if #t > 60 then t = t:sub(1, 57) .. "..." end
+    return t
+end
+
+-- nil = no search; otherwise found[key] = true (matched by name/description)
+-- or the setting text that matched. Every word has to match somewhere.
+local function Search(text)
+    local words = {}
+    for w in (text or ""):lower():gmatch("%S+") do words[#words + 1] = w end
+    if #words == 0 then return nil end
+    local found = {}
+    for _, key in ipairs(TT.order) do
+        local m = TT.modules[key]
+        local base = (key .. " " .. (m.title or "") .. " " .. (m.desc or "") .. " " .. (m.category or "")):lower()
+        local texts = (pages[key] and pages[key].body) and PageTexts(pages[key].body, {}, 0) or {}
+        local ok, via = true, nil
+        for _, w in ipairs(words) do
+            if not base:find(w, 1, true) then
+                local hit
+                for _, t in ipairs(texts) do
+                    if t:lower():find(w, 1, true) then hit = t; break end
+                end
+                if not hit then ok = false; break end
+                via = via or Plain(hit)
+            end
+        end
+        if ok then found[key] = via or true end
+    end
+    return found
+end
+
+local function ApplySearch(text)
+    if not pages.home then return end            -- hub not built yet: done on first open
+    local found = Search(text)
+    pages.home.Layout(found)
+    if sidebarLayout then sidebarLayout(found) end
+    -- looking at a module that got filtered out: show the results instead
+    if found and currentPage and currentPage ~= "home" and not found[currentPage] then ShowPage("home") end
+end
+
+local searchBox = TT.EditBox(sidebar, 154, 22)
+searchBox:SetPoint("TOPLEFT", 8, -8)
+searchBox:SetTextInsets(6, 20, 0, 0)
+local searchHint = TT.Label(searchBox, "Search...", "GameFontDisableSmall")
+searchHint:SetPoint("LEFT", 7, 0)
+local searchClear = CreateFrame("Button", nil, searchBox)
+searchClear:SetSize(18, 18)
+searchClear:SetPoint("RIGHT", -2, 0)
+local clearX = searchClear:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+clearX:SetPoint("CENTER", 0, 1)
+clearX:SetText("x")
+clearX:SetTextColor(unpack(C.dim))
+searchClear:SetScript("OnEnter", function() clearX:SetTextColor(1, 0.35, 0.35) end)
+searchClear:SetScript("OnLeave", function() clearX:SetTextColor(unpack(C.dim)) end)
+searchClear:SetScript("OnClick", function() searchBox:SetText(""); searchBox:ClearFocus() end)
+searchClear:Hide()
+searchBox:SetScript("OnTextChanged", function(self)
+    local t = self:GetText()
+    searchHint:SetShown(t == "")
+    searchClear:SetShown(t ~= "")
+    ApplySearch(t)
+end)
+searchBox:SetScript("OnEnterPressed", searchBox.ClearFocus)
+searchBox:SetScript("OnEscapePressed", function(self) self:SetText(""); self:ClearFocus() end)
 
 hub:SetScript("OnShow", function()
     if not pages.home then
@@ -545,6 +683,7 @@ hub:SetScript("OnShow", function()
     end
     TT:RefreshHub()
     ShowPage(currentPage or "home")
+    if searchBox:GetText() ~= "" then ApplySearch(searchBox:GetText()) end
 end)
 
 ---------------------------------------------------------------------------
@@ -601,5 +740,8 @@ SlashCmdList.TRIKKSTWEAKS = function(msg)
     if cmd and cmd:lower() == "dump" then TT.Dump(arg)       -- developer tool (Inspector.lua)
     elseif cmd and cmd:lower() == "minimap" then               -- /trikks minimap: show / hide the button
         TT.SetMinimapButtonShown(not TT.MinimapButtonShown())
+    elseif msg and strtrim(msg) ~= "" then                   -- /trikks <words>: search
+        hub:Show()
+        searchBox:SetText(strtrim(msg))
     else hub:SetShown(not hub:IsShown()) end
 end

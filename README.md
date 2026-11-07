@@ -20,7 +20,7 @@ Copy `TrikksTweaks` into `World of Warcraft\_forever_\Interface\AddOns\`.
 **Fun** – Four in a Row (`/c4`)
 
 ## Companion addons (separate downloads)
-- **Trikks Reskin** (requires Trikks Tweaks): a flat, minimalist reskin of Blizzard's windows, progress bars, gear slots and tooltips, plus clean square action buttons.
+- **Trikks Reskins** (requires Trikks Tweaks): a flat, minimalist reskin of Blizzard's windows, progress bars, gear slots and tooltips, plus clean square action buttons.
 - **Trikks Auras** (standalone): your chosen buffs/debuffs in a row that grows from the centre, placed with Edit Mode.
 
 ## Repository layout

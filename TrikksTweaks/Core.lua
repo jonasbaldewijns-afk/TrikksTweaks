@@ -4,7 +4,7 @@
 -- table (TT) as our namespace so modules can talk to the core without globals.
 local ADDON, TT = ...
 
--- Public handle so companion addons (TrikksReskin) can add their own modules
+-- Public handle so companion addons (TrikksReskins) can add their own modules
 -- to the same hub and use the same UI kit.
 _G.TrikksTweaks = TT
 

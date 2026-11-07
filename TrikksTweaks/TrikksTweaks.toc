@@ -1,0 +1,44 @@
+## Interface: 16001, 120105
+## Title: Trikks Tweaks
+## Notes: A bundle of opt-in UI and quality-of-life modules. /trikks
+## Version: 1.0
+## SavedVariables: TrikksTweaksDB
+## IconTexture: Interface\AddOns\TrikksTweaks\media\minimap
+## AddonCompartmentFunc: TrikksTweaks_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: TrikksTweaks_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: TrikksTweaks_OnAddonCompartmentLeave
+
+Libs\LibStub\LibStub.lua
+Libs\LibEditMode\embed.xml
+
+Core.lua
+Inspector.lua
+MinimapButton.lua
+# Interface
+Modules\ClassPortraits.lua
+Modules\CenteredAuras.lua
+Modules\PartyPosition.lua
+Modules\DarkMode.lua
+Modules\BarFade.lua
+Modules\Minimap.lua
+Modules\ClutterText.lua
+Modules\Tooltips.lua
+Modules\HideFrames.lua
+Modules\CharacterExtras.lua
+# Quality of Life
+Modules\Automation.lua
+Modules\Social.lua
+Modules\ConsumableMacros.lua
+Modules\VendorBags.lua
+Modules\MoveWindows.lua
+Modules\Chat.lua
+Modules\SpellID.lua
+Modules\SmallHelpers.lua
+Modules\DialogKeys.lua
+# System
+Modules\CameraVisuals.lua
+Modules\SoundMute.lua
+# Tools
+Modules\Setups.lua
+# Fun
+Modules\FourInARow.lua

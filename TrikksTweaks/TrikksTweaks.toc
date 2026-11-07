@@ -9,14 +9,12 @@
 ## AddonCompartmentFuncOnLeave: TrikksTweaks_OnAddonCompartmentLeave
 
 Libs\LibStub\LibStub.lua
-Libs\LibEditMode\embed.xml
 
 Core.lua
 Inspector.lua
 MinimapButton.lua
 # Interface
 Modules\ClassPortraits.lua
-Modules\CenteredAuras.lua
 Modules\PartyPosition.lua
 Modules\DarkMode.lua
 Modules\BarFade.lua

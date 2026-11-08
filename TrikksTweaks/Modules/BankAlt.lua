@@ -2,8 +2,8 @@
 -- Two saved characters ("Main" and "Bank alt"), each with its own rules:
 -- items to always send (whitelist), whole item types (cloth, herbs, ore, ...)
 -- and all gold above an amount you keep. At a mailbox there is a button per
--- character: a click sends everything set in /trikks (quick send), "..." opens
--- a panel to pick item types and type an amount of gold for this one send.
+-- character: it opens a send panel to tick item types and type an amount of
+-- gold for this one send, with a Quick send button for everything set in /trikks.
 -- The button for the character you're playing is hidden (no mailing yourself).
 --
 -- How sending works: one mail holds up to 12 items. A mail is filled and sent,
@@ -141,7 +141,7 @@ end
 ---------------------------------------------------------------------------
 -- Sending
 ---------------------------------------------------------------------------
-local buttons, choosers, ev = {}, {}, nil
+local buttons, ev = {}, nil
 local job                        -- { key, rules, manual, more } while a run is going
 local sending, timer = false, nil
 local UpdateButtons, RefreshPanel
@@ -241,6 +241,8 @@ RefreshPanel = function()
     panel.summary:SetText(#parts > 0 and (table.concat(parts, " + ") .. string.format("  in %d %s", mails, mails == 1 and "mail" or "mails"))
         or "|cff888888Nothing ticked to send.|r")
     panel.send:SetEnabled(mails > 0 and not sending)
+    local qr = RulesFrom(P(selKey))
+    panel.quick:SetEnabled(not sending and (#Collect(qr) > 0 or SpareGold(qr, POSTAGE_GUESS) > 0))
 end
 
 local function OpenPanel(key)
@@ -303,10 +305,29 @@ local function BuildPanel()
     y = y - 34
     panel.summary = TT.Label(panel, "", "GameFontHighlight")
     panel.summary:SetPoint("TOPLEFT", 16, y)
-    panel.send = TT.Button(panel, "Send", 120, function() local r = sel; panel:Hide(); Start(selKey, r) end)
+    panel.send = TT.Button(panel, "Send", 100, function() local r = sel; panel:Hide(); Start(selKey, r) end)
     panel.send:SetPoint("BOTTOMLEFT", 16, 14)
+    -- quick send: everything as set up in /trikks for this character, ignoring the ticks here
+    panel.quick = TT.Button(panel, "Quick send", 120, function()
+        local key = selKey
+        panel:Hide()
+        Start(key, RulesFrom(P(key)))
+    end)
+    panel.quick:SetPoint("LEFT", panel.send, "RIGHT", 6, 0)
+    panel.quick:HookScript("OnEnter", function(btn)
+        local r = RulesFrom(P(selKey))
+        local items = #Collect(r)
+        local gold = SpareGold(r, (items + 1) * POSTAGE_GUESS)
+        GameTooltip:SetOwner(btn, "ANCHOR_TOP")
+        GameTooltip:SetText("Quick send", 1, 1, 1)
+        GameTooltip:AddLine(items .. (items == 1 and " stack" or " stacks") .. (gold > 0 and (" + " .. Money(gold)) or ""), 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Everything set in /trikks > Mail to Alts,", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine("whatever is ticked here.", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    panel.quick:HookScript("OnLeave", GameTooltip_Hide)
     local set = TT.Button(panel, "Settings...", 100, function() TT:ShowPage("BankAlt") end)
-    set:SetPoint("LEFT", panel.send, "RIGHT", 6, 0)
+    set:SetPoint("LEFT", panel.quick, "RIGHT", 6, 0)
 end
 
 UpdateButtons = function()
@@ -317,16 +338,13 @@ UpdateButtons = function()
         local to = NameOf(key)
         local show = open and to and not IsMe(to) and not HiddenHere(key) and true or false
         b:SetShown(show)
-        choosers[key]:SetShown(show)
         if show then
             -- a row under the Inbox / Send Mail tabs (they hang below the window)
             b:ClearAllPoints()
             local tab = MailFrameTab1
             if tab then b:SetPoint("TOPLEFT", tab, "BOTTOMLEFT", x, -4)
             else b:SetPoint("TOPLEFT", MailFrame, "BOTTOMLEFT", x, -36) end
-            choosers[key]:ClearAllPoints()
-            choosers[key]:SetPoint("LEFT", b, "RIGHT", 2, 0)
-            x = x + b:GetWidth() + choosers[key]:GetWidth() + 10
+            x = x + b:GetWidth() + 6
             local label = P(key).label .. ": " .. to
             if sending and job and job.key == key then
                 b:SetText("Sending..."); b:Disable()
@@ -379,31 +397,12 @@ function M:Setup()
     for _, key in ipairs(KEYS) do
         local b = TT.Button(UIParent, "", 170, nil)
         b:SetHeight(24)
-        -- left-click: quick send (everything as set in /trikks); right-click: choose
-        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        b:SetScript("OnClick", function(_, mouse)
-            if mouse == "RightButton" then OpenPanel(key); return end
-            if job and job.key == key and job.manual and not sending then Start(key)
-            else Start(key, RulesFrom(P(key))) end
+        -- click: the send panel (pick + quick send); during a click-per-mail run: next mail
+        b:SetScript("OnClick", function()
+            if job and job.key == key and job.manual and not sending then Start(key) else OpenPanel(key) end
         end)
-        b:HookScript("OnEnter", function(btn)
-            local r = RulesFrom(P(key))
-            local items = #Collect(r)
-            local gold = SpareGold(r, (items + 1) * POSTAGE_GUESS)
-            GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
-            GameTooltip:SetText("Quick send to " .. (NameOf(key) or "?"), 1, 1, 1)
-            GameTooltip:AddLine(items .. (items == 1 and " stack" or " stacks") .. (gold > 0 and (" + " .. Money(gold)) or ""), 0.8, 0.8, 0.8)
-            GameTooltip:AddLine("Everything set in /trikks > Mail to Alts.", 0.6, 0.6, 0.6)
-            GameTooltip:AddLine("Right-click or ...: choose what to send.", 0.6, 0.6, 0.6)
-            GameTooltip:Show()
-        end)
-        b:HookScript("OnLeave", GameTooltip_Hide)
         b:Hide()
         buttons[key] = b
-        local c = TT.Button(UIParent, "...", 26, function() OpenPanel(key) end)
-        c:SetHeight(24)
-        c:Hide()
-        choosers[key] = c
     end
     BuildPanel()
     ev = CreateFrame("Frame")
@@ -425,9 +424,7 @@ end
 function M:OnEnable()
     for _, e in ipairs(EVENTS) do pcall(ev.RegisterEvent, ev, e) end
     if MailFrame then
-        for _, list in ipairs({ buttons, choosers }) do
-            for _, b in pairs(list) do b:SetParent(MailFrame); b:SetFrameStrata(MailFrame:GetFrameStrata()) end
-        end
+        for _, b in pairs(buttons) do b:SetParent(MailFrame); b:SetFrameStrata(MailFrame:GetFrameStrata()) end
     end
     UpdateButtons()
 end
@@ -435,7 +432,6 @@ function M:OnDisable()
     for _, e in ipairs(EVENTS) do pcall(ev.UnregisterEvent, ev, e) end
     if sending then Stop() end
     for _, b in pairs(buttons) do b:Hide() end
-    for _, b in pairs(choosers) do b:Hide() end
     if panel then panel:Hide() end
 end
 
@@ -565,9 +561,9 @@ function M:BuildSettings(body, page)
     drop:SetScript("OnClick", AddFromCursor)
     y = y + 168
     local help = TT.Label(body,
-        "At a mailbox: a button per character under the mail window. Click = quick send of\n" ..
-        "everything set here. \"...\" (or right-click) = pick item types and type an amount of gold\n" ..
-        "for this one send. 12 items per mail, one mail after another, gold in the last one.\n" ..
+        "At a mailbox: a button per character under the mail tabs. It opens the send panel: tick\n" ..
+        "item types and type an amount of gold for this one send, or Quick send everything set\n" ..
+        "here. 12 items per mail, one mail after another, gold in the last one.\n" ..
         "Soulbound, locked and quest items are never sent. If the game wants a click per\n" ..
         "mail, the button says \"next mail\".", "GameFontDisableSmall")
     help:SetPoint("TOPLEFT", 0, -y)

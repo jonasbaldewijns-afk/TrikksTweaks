@@ -362,48 +362,67 @@ end
 -- The zone name bar at the top. On this client it is one button
 -- (MinimapCluster.ZoneTextButton) whose own texture is the dark bar; other
 -- clients also have a separate BorderTop. Our location text replaces it.
-PlaceZone = function()
-    if MinimapCluster then
-        for _, f in ipairs({ MinimapCluster.BorderTop, MinimapCluster.ZoneTextButton }) do
-            if f then
-                Remember(f)
-                if M.db.hideZone then
-                    f:SetParent(hiddenParent)
-                    -- belt and braces: if something hands it back to the
-                    -- cluster, it is still invisible and not clickable
-                    f:SetAlpha(0); f:Hide()
-                    if f.EnableMouse then f:EnableMouse(false) end
-                    if not f.ttZoneHook then
-                        f.ttZoneHook = true
-                        hooksecurefunc(f, "Show", function(self) if M.enabled and M.db.hideZone then self:Hide() end end)
-                    end
-                elseif f:GetParent() == hiddenParent then
-                    f:SetParent(f.ttOrig.parent); f:SetAlpha(1); f:Show()
-                    if f.EnableMouse then f:EnableMouse(true) end
-                end
-            end
-        end
-        -- move the map up into the gap the bar leaves. The container sits below
-        -- the bar (or above it when Edit Mode puts the header underneath); we
-        -- pin its top to the top of the cluster, keeping its sideways offset.
-        local box = MinimapCluster.MinimapContainer
-        if box then
-            Guard(box)
-            if M.db.hideZone and M.db.moveUp then
-                if not box.ttOrigPoint then
-                    local p, rel, rp, x, y = box:GetPoint(1)
-                    box.ttOrigPoint = p and { p, rel, rp, x, y } or false
-                end
-                local o = box.ttOrigPoint
-                box:ClearAllPoints()
-                box:SetPoint("TOP", MinimapCluster, "TOP", o and o[4] or 10, -2)
-            elseif box.ttOrigPoint then
-                box:ClearAllPoints()
-                box:SetPoint(unpack(box.ttOrigPoint))
-                box.ttOrigPoint = nil
-            end
-        end
+--
+-- It is faded out (alpha 0, no mouse) instead of being moved to a hidden
+-- parent: MinimapCluster is a restricted frame on this client, and moving its
+-- children away failed, which stopped everything after it (the bar stayed and
+-- the map didn't move up). Fading is always allowed. Each step runs on its
+-- own so one failing step can't block the others, and a failure is printed
+-- once in chat (WoW's own error pop-up may be switched off).
+local zoneHooked, zoneWarned = {}, {}
+local function Step(name, fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok and not zoneWarned[name] then
+        zoneWarned[name] = true
+        TT.Print("minimap zone bar (" .. name .. "): " .. tostring(err))
     end
+end
+
+local function FadeZoneFrame(f, hide)
+    f:SetAlpha(hide and 0 or 1)
+    if f.EnableMouse then f:EnableMouse(not hide) end
+    if not zoneHooked[f] then
+        zoneHooked[f] = true
+        -- keep it faded if Blizzard changes its alpha or shows it again
+        hooksecurefunc(f, "SetAlpha", function(self, a)
+            if a ~= 0 and M.enabled and M.db.hideZone then self:SetAlpha(0) end
+        end)
+        f:HookScript("OnShow", function(self)
+            if M.enabled and M.db.hideZone then self:SetAlpha(0) end
+        end)
+    end
+end
+
+local origBoxPoint
+local function MoveMapUp()
+    -- move the map up into the gap the bar leaves. The container sits below
+    -- the bar (or above it when Edit Mode puts the header underneath); we pin
+    -- its top to the top of the cluster, keeping its sideways offset.
+    local box = MinimapCluster.MinimapContainer
+    if not box then return end
+    Guard(box)
+    if M.db.hideZone and M.db.moveUp then
+        if origBoxPoint == nil then
+            local p, rel, rp, x, y = box:GetPoint(1)
+            origBoxPoint = p and { p, rel, rp, x, y } or false
+        end
+        box:ClearAllPoints()
+        box:SetPoint("TOP", MinimapCluster, "TOP", origBoxPoint and origBoxPoint[4] or 10, -2)
+    elseif origBoxPoint then
+        box:ClearAllPoints()
+        box:SetPoint(unpack(origBoxPoint))
+        origBoxPoint = nil
+    end
+end
+
+PlaceZone = function()
+    if not MinimapCluster then return end
+    local hide = M.db.hideZone and true or false
+    for _, key in ipairs({ "BorderTop", "ZoneTextButton" }) do
+        local f = MinimapCluster[key]
+        if f then Step(key, FadeZoneFrame, f, hide) end
+    end
+    Step("move map up", MoveMapUp)
 end
 
 PlaceElements = function()

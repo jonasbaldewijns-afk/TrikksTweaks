@@ -11,7 +11,7 @@ local M = TT:RegisterModule("DialogKeys", {
     title = "Dialog Keys",
     category = "Quality of Life",
     desc = "Space for the main button and 1-9 for options in NPC dialogs, quests and pop-ups.",
-    defaults = { key = "SPACE", numbers = true, showNumbers = true, popups = true, skipRisky = true },
+    defaults = { key = "SPACE", numbers = true, showNumbers = true, popups = false, skipRisky = true },
 })
 
 -- Pop-ups that do something you can't undo: never confirm these by key.

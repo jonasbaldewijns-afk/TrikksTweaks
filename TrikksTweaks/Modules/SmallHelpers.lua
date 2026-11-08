@@ -7,7 +7,7 @@ local M = TT:RegisterModule("SmallHelpers", {
     title = "Small Helpers",
     category = "Quality of Life",
     desc = "Faster cutscene skip, easy item destroy, full-bags loot warning, remove unwanted transforms.",
-    defaults = { skipMovies = true, easyDestroy = true, bagsFull = true, removeTransforms = false, transforms = {} },
+    defaults = { skipMovies = false, easyDestroy = false, bagsFull = true, removeTransforms = false, transforms = {} },
 })
 local function On(key) return M.enabled and M.db[key] end
 

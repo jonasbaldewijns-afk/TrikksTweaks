@@ -8,8 +8,9 @@ local M = TT:RegisterModule("Chat", {
     category = "Quality of Life",
     desc = "Fade, history between logins, hidden buttons, edit box on top, copy window, class colours and spam filters.",
     defaults = {
-        fade = true, fadeTime = 30, history = true, lines = 50, saved = {},
-        hideButtons = true, editTop = true, arrowKeys = true, unclamp = true, classColors = true,
+        fade = false, fadeTime = 30, history = true, lines = 50, saved = {},
+        -- moving / hiding Blizzard's chat parts is opt-in
+        hideButtons = false, editTop = false, arrowKeys = true, unclamp = false, classColors = true,
         copyChat = true, filterDrunk = true, filterDuel = true, filterSpellLinks = false,
     },
 })

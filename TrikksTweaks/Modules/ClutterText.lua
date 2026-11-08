@@ -7,7 +7,7 @@ local M = TT:RegisterModule("ClutterText", {
     title = "Clutter Text",
     category = "Interface",
     desc = "Hide red error messages, the big zone name, combat numbers on portraits and raid group labels.",
-    defaults = { errors = true, errorsInCombatOnly = false, zoneText = true, portraitNumbers = true, raidLabels = true },
+    defaults = { errors = false, errorsInCombatOnly = false, zoneText = false, portraitNumbers = false, raidLabels = false },   -- all opt-in
 })
 
 local hidden                     -- made in Setup

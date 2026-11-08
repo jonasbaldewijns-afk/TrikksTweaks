@@ -8,9 +8,9 @@ local M = TT:RegisterModule("Automation", {
     desc = "Auto repair, sell junk, quests, instant loot, summons, resurrections and more.",
     defaults = {
         repair = true, guildRepair = false, sellJunk = true, sell12 = true,
-        quests = true, skipDaily = true, skipTrivial = true, skipGold = true,
+        quests = false, skipDaily = true, skipTrivial = true, skipGold = true,   -- acting for you: opt-in
         fastLoot = true,
-        summons = true, resurrect = true, resNoCombat = true, pvpRelease = true, altGossip = true,
+        summons = false, resurrect = false, resNoCombat = true, pvpRelease = false, altGossip = true,
     },
 })
 local function On(key) return M.enabled and M.db[key] end

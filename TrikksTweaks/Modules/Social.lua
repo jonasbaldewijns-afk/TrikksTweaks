@@ -8,8 +8,8 @@ local M = TT:RegisterModule("Social", {
     category = "Quality of Life",
     desc = "Block duels, strangers' invites, friend requests and shared quests; auto-accept friends; whisper-to-invite.",
     defaults = {
-        blockDuels = true, blockInvites = false, blockFriendRequests = false,
-        blockSharedQuests = false, acceptInvites = true, guildFriends = true,
+        blockDuels = false, blockInvites = false, blockFriendRequests = false,   -- acting for you: opt-in
+        blockSharedQuests = false, acceptInvites = false, guildFriends = true,
         keywordInvite = false, keyword = "inv",
     },
 })

@@ -7,7 +7,7 @@ local M = TT:RegisterModule("CameraVisuals", {
     title = "Camera & Visuals",
     category = "System",
     desc = "Further camera zoom, no screen glow, no full-screen effects, adjustable weather density.",
-    defaults = { zoom = true, zoom10 = 26, noGlow = true, noEffects = true, weather = false, weatherLevel = 1, orig = {} },
+    defaults = { zoom = true, zoom10 = 26, noGlow = false, noEffects = false, weather = false, weatherLevel = 1, orig = {} },
 })
 
 local function Get(name) local ok, v = pcall(C_CVar.GetCVar, name); return ok and v or nil end

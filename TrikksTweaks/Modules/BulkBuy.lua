@@ -133,8 +133,12 @@ local function MakeWindow()
 end
 
 -- Shift-click on a vendor item: ours instead of Blizzard's (gold-priced items only)
+local lastButton, lastTime
 local function OnModifiedClick(button)
     if not M.enabled or buying then return end
+    -- reached through two routes (see Setup): handle each click once
+    if lastButton == button and lastTime == GetTime() then return end
+    lastButton, lastTime = button, GetTime()
     if not (MerchantFrame and MerchantFrame.selectedTab == 1) or not IsModifiedClick("SPLITSTACK") then return end
     local index = button:GetID()
     local info = C_MerchantFrame and C_MerchantFrame.GetItemInfo and C_MerchantFrame.GetItemInfo(index)
@@ -166,8 +170,19 @@ local function OnModifiedClick(button)
 end
 
 function M:Setup()
+    -- Two routes to the Shift-click, because clients wire it differently:
+    -- the global function (retail calls it by name on every click) and the
+    -- item buttons' own click scripts (where the function was bound at load).
     if type(MerchantItemButton_OnModifiedClick) == "function" then
         hooksecurefunc("MerchantItemButton_OnModifiedClick", OnModifiedClick)
+    end
+    for i = 1, 12 do
+        local b = _G["MerchantItem" .. i .. "ItemButton"]
+        if b then
+            local function Check(btn) if IsModifiedClick("SPLITSTACK") then OnModifiedClick(btn) end end
+            b:HookScript("OnClick", Check)
+            if b:HasScript("OnModifiedClick") then b:HookScript("OnModifiedClick", Check) end
+        end
     end
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("MERCHANT_CLOSED")

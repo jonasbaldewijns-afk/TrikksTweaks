@@ -18,6 +18,7 @@ MinimapButton.lua
 Modules\ClassPortraits.lua
 Modules\CursorRing.lua
 Modules\PartyPosition.lua
+Modules\SoloParty.lua
 Modules\DarkMode.lua
 Modules\BarFade.lua
 Modules\Minimap.lua

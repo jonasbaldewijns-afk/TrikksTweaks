@@ -65,6 +65,7 @@ end
 
 local function SetBarAlpha(bar, a)
     current[bar[1]] = a
+    if bar[1] == "player" and TT.playerFrameHidden then return end   -- Solo Party Frame hides it
     local list = Frames(bar)
     for i = 1, #list do list[i]:SetAlpha(a) end
 end

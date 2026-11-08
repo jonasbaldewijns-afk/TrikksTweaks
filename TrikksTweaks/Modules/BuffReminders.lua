@@ -28,7 +28,10 @@ local test, inEditMode, currentLayout = false, false, nil
 -- spells = what a click casts (best first; the first one you know is used),
 -- auras  = buff names that count as "has it" (defaults to the spells).
 -- group  = also count party/raid members missing it, off = off by default,
--- weapon = a weapon enchant (poison, imbue) also counts,
+-- weapon = a weapon enchant (poison, imbue) also counts: true = both weapons
+--          (the weaker one counts), 16 = main hand only, 17 = off hand only,
+-- items  = also usable as items from your bags (classic poisons: an item you
+--          put on a weapon; any rank, matched by the start of the name),
 -- always = remind even if none of the spells is known (e.g. poisons are items).
 local function E(key, label, spells, auras, opts)
     local e = { key = key, label = label, spells = spells, auras = auras or spells }
@@ -84,8 +87,10 @@ local CLASS_BUFFS = {
           "Aspect of the Cheetah", "Aspect of the Pack", "Aspect of the Wild", "Aspect of the Viper" }, nil, { off = true }),
     },
     ROGUE = {
-        -- classic: poison = weapon enchant from an item; newer clients: poison = a buff from a spell
-        E("poison", "Weapon poison", POISONS, POISONS, { weapon = true, always = true }),
+        -- classic: poison = weapon enchant from an item; newer clients: poison = a buff from a spell.
+        -- One reminder per weapon (the off-hand one only with a weapon in the off hand).
+        E("poisonMH", "Main-hand poison", POISONS, POISONS, { weapon = 16, always = true, items = true }),
+        E("poisonOH", "Off-hand poison", POISONS, POISONS, { weapon = 17, always = true, items = true }),
     },
     EVOKER = {
         E("bronze", "Blessing of the Bronze", { "Blessing of the Bronze" }, nil, { group = true }),
@@ -124,10 +129,31 @@ local function Known(name)
     if IsSpellKnown and IsSpellKnown(id) then return id end
     return nil
 end
+-- items in your bags whose name starts with one of the entry's names
+-- ("Instant Poison" finds "Instant Poison II"), each name once
+local function BagItems(e)
+    local list, seen = {}, {}
+    for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
+        for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            local name = info and info.itemID and C_Item.GetItemNameByID(info.itemID)
+            if name and not IsSecret(name) and not seen[name] then
+                for _, base in ipairs(e.spells) do
+                    if name:sub(1, #base) == base then seen[name] = true; list[#list + 1] = name; break end
+                end
+            end
+        end
+    end
+    return list
+end
+local isItem = {}                -- name -> true for names that came from the bags
 local function KnownSpells(e)
     local list = {}
     for _, name in ipairs(e.spells) do
         if Known(name) then list[#list + 1] = name end
+    end
+    if e.items and #list == 0 then
+        for _, name in ipairs(BagItems(e)) do isItem[name] = true; list[#list + 1] = name end
     end
     return list
 end
@@ -191,10 +217,16 @@ local function OffhandWeapon()
     local classID = select(6, (C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant)(id))
     return classID == 2
 end
--- seconds left on the weakest needed weapon enchant (nil = one is missing)
-local function WeaponLeft()
+-- seconds left on the weapon enchant (nil = missing): slot 16 / 17 for one
+-- weapon, anything else = the weaker of the weapons you hold
+local function WeaponLeft(slot)
     local hasMain, mainMs, _, _, hasOff, offMs = GetWeaponEnchantInfo()
+    if slot == 17 then
+        if not OffhandWeapon() then return math.huge end
+        return hasOff and (offMs or 0) / 1000 or nil
+    end
     if not GetInventoryItemID("player", 16) then return math.huge end   -- no weapon: nothing to remind
+    if slot == 16 then return hasMain and (mainMs or 0) / 1000 or nil end
     if not hasMain then return nil end
     local left = (mainMs or 0) / 1000
     if OffhandWeapon() then
@@ -261,7 +293,9 @@ local function OnEnter(self)
     if self.missing and self.missing > 0 then
         GameTooltip:AddLine(self.missing .. " in your group " .. (self.missing == 1 and "is" or "are") .. " missing it", 1, 0.82, 0)
     end
-    if self.spell then
+    if self.item then
+        GameTooltip:AddLine("Click: put " .. self.item .. " on your " .. (self.slot == 17 and "off hand" or "main hand"), 0.7, 0.7, 0.7)
+    elseif self.spell then
         GameTooltip:AddLine("Click: cast " .. self.spell .. " on yourself", 0.7, 0.7, 0.7)
         GameTooltip:AddLine("Right-click: on your target", 0.7, 0.7, 0.7)
     end
@@ -303,10 +337,11 @@ local function Update()
         local limit = db.minLeft * 60
         for _, e in ipairs(Entries()) do
             local known = KnownSpells(e)
-            if IsOn(e) and (#known > 0 or e.always) then
+            local skip = e.weapon == 17 and not OffhandWeapon()          -- no off-hand weapon
+            if not skip and IsOn(e) and (#known > 0 or e.always) then
                 local left, dur = BestLeft(mine, e.auras)
                 if e.weapon then
-                    local w = WeaponLeft()
+                    local w = WeaponLeft(e.weapon)
                     if w and (not left or w > left) then left, dur = w, 0 end
                 end
                 local selfLow = Low(left, dur, limit)
@@ -325,10 +360,15 @@ local function Update()
                 end
                 if selfLow or missing > 0 or preview then
                     local spell = CastSpell(e, known)
+                    local item = spell and isItem[spell] and spell or nil
+                    if item then spell = nil end
+                    local slot = (e.weapon == 17) and 17 or 16
+                    local itemIcon = item and C_Item.GetItemIconByID(C_Item.GetItemInfoInstant(item) or 0)
                     show[#show + 1] = {
-                        e = e, spell = spell, missing = missing,
+                        e = e, spell = spell, item = item, slot = slot, missing = missing,
                         left = (left and left < math.huge and selfLow) and left or nil,
-                        icon = (spell and SpellIcon(spell)) or (e.weapon and GetInventoryItemTexture("player", 16)) or 134400,
+                        icon = (spell and SpellIcon(spell)) or itemIcon
+                            or (e.weapon and GetInventoryItemTexture("player", slot)) or 134400,
                     }
                 end
             end
@@ -347,13 +387,27 @@ local function Update()
         b.icon:SetTexture(d.icon)
         b.count:SetText(d.missing > 0 and d.missing or "")
         b.time:SetText(d.left and FormatTime(d.left) or "")
-        b.label, b.spell, b.missing = d.e.label, d.spell, d.missing
-        b:SetAttribute("type1", d.spell and "spell" or nil)
-        b:SetAttribute("spell1", d.spell)
-        b:SetAttribute("unit1", "player")
-        b:SetAttribute("type2", d.spell and "spell" or nil)
-        b:SetAttribute("spell2", d.spell)
-        b:SetAttribute("unit2", "target")
+        b.label, b.spell, b.item, b.slot, b.missing = d.e.label, d.spell, d.item, d.slot, d.missing
+        if d.item then
+            -- an item put on a weapon (classic poisons): Blizzard's secure button
+            -- uses it on the inventory slot in "target-slot" (16 / 17)
+            for _, k in ipairs({ "1", "2" }) do
+                b:SetAttribute("type" .. k, "item")
+                b:SetAttribute("item" .. k, d.item)
+                b:SetAttribute("target-slot" .. k, d.slot)
+                b:SetAttribute("spell" .. k, nil)
+                b:SetAttribute("unit" .. k, nil)
+            end
+        else
+            b:SetAttribute("item1", nil); b:SetAttribute("item2", nil)
+            b:SetAttribute("target-slot1", nil); b:SetAttribute("target-slot2", nil)
+            b:SetAttribute("type1", d.spell and "spell" or nil)
+            b:SetAttribute("spell1", d.spell)
+            b:SetAttribute("unit1", "player")
+            b:SetAttribute("type2", d.spell and "spell" or nil)
+            b:SetAttribute("spell2", d.spell)
+            b:SetAttribute("unit2", "target")
+        end
         b:Show()
     end
     for i = n + 1, #buttons do buttons[i]:Hide() end
@@ -445,6 +499,18 @@ local function Queue()
     if queued then return end
     queued = true
     C_Timer.After(0.25, function() queued = false; Update() end)
+end
+
+-- the single "Weapon poison" reminder became one per weapon: carry its settings over
+function M:OnLoad()
+    local db = M.db
+    for _, t in ipairs({ db.on, db.cast }) do
+        if t.poison ~= nil then
+            if t.poisonMH == nil then t.poisonMH = t.poison end
+            if t.poisonOH == nil then t.poisonOH = t.poison end
+            t.poison = nil
+        end
+    end
 end
 
 function M:Setup()

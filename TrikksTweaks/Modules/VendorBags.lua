@@ -99,7 +99,8 @@ local function UpdateFree()
     local on = M.enabled and M.db.freeSlots
     -- newer clients have this built in as a setting
     if C_CVar.GetCVar("displayFreeBagSlots") ~= nil then
-        C_CVar.SetCVar("displayFreeBagSlots", on and "1" or "0")
+        local want = on and "1" or "0"
+        if C_CVar.GetCVar("displayFreeBagSlots") ~= want then C_CVar.SetCVar("displayFreeBagSlots", want) end
         return
     end
     if not freeText then
@@ -155,6 +156,7 @@ local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
 ev:RegisterEvent("BAG_UPDATE_DELAYED")
 ev:SetScript("OnEvent", function(_, event)
+    if not M.enabled then return end      -- OnDisable already put everything back
     UpdateFree()
     if event == "PLAYER_ENTERING_WORLD" then ApplyDress() end
 end)

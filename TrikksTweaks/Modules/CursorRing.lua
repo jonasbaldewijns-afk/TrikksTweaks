@@ -35,26 +35,52 @@ local function Apply()
     tex:SetVertexColor(c[1], c[2], c[3], db.alpha / 100)
 end
 
--- follow the cursor every frame (cursor position is in screen pixels: divide by the UI scale)
-ring:SetScript("OnUpdate", function(self)
-    local db = M.db
-    local inCombat = InCombatLockdown() or UnitAffectingCombat("player")
+-- Whether the ring should show is decided on events (combat starts / ends,
+-- a menu opens / closes) instead of being re-checked every frame. While it's
+-- hidden its OnUpdate doesn't run at all, so "combat only" costs nothing
+-- outside combat.
+local inCombat = false
+local function Refresh()
+    local db = M.enabled and M.db
+    if not db then ring:Hide(); return end
     local menus = db.hideInMenus and ((GameMenuFrame and GameMenuFrame:IsShown()) or (TT.hub and TT.hub:IsShown()))
-    if (db.combatOnly and not inCombat) or menus then tex:Hide(); return end
-    tex:Show()
+    ring:SetShown(not menus and (inCombat or not db.combatOnly))
+end
+
+local ev = CreateFrame("Frame")
+ev:RegisterEvent("PLAYER_REGEN_DISABLED")
+ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+ev:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then inCombat = true
+    elseif event == "PLAYER_REGEN_ENABLED" then inCombat = false
+    else inCombat = InCombatLockdown() or UnitAffectingCombat("player") or false end
+    Refresh()
+end)
+for _, f in ipairs({ GameMenuFrame, TT.hub }) do
+    if f then f:HookScript("OnShow", Refresh); f:HookScript("OnHide", Refresh) end
+end
+
+-- follow the cursor (cursor position is in screen pixels: divide by the UI scale)
+local GetCursorPosition = GetCursorPosition
+local lastX, lastY
+ring:SetScript("OnUpdate", function(self)
     local x, y = GetCursorPosition()
+    if x == lastX and y == lastY then return end      -- cursor didn't move: nothing to do
+    lastX, lastY = x, y
     local s = UIParent:GetEffectiveScale()
     self:ClearAllPoints()
     self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / s, y / s)
 end)
+ring:SetScript("OnShow", function() lastX = nil end)   -- jump to the cursor right away
 
-function M:OnEnable() Apply(); ring:Show() end
+function M:OnEnable() Apply(); Refresh() end
 function M:OnDisable() ring:Hide() end
 
 function M:BuildSettings(body, page)
     local db, refreshers, y = M.db, {}, 0
     local function Check(key, text)
-        local cb = TT.Check(body, text, function(v) db[key] = v; Apply() end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; Apply(); Refresh() end)
         cb:SetPoint("TOPLEFT", 2, -y)
         refreshers[#refreshers + 1] = function() cb:SetChecked(db[key]) end
         y = y + 24

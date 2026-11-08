@@ -162,26 +162,36 @@ local function Color(value, good, bad)       -- green -> yellow -> red
     if value <= good then return "33ff99" elseif value <= bad then return "ffd100" else return "ff5555" end
 end
 
+-- Durability only changes on these events, so it's worked out then instead of
+-- scanning 19 gear slots 4 times a second.
+local durability, durabilityDirty = nil, true
+local durEv = CreateFrame("Frame")
+durEv:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
+durEv:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+durEv:SetScript("OnEvent", function() durabilityDirty = true end)
+
+local STAT_KEYS = { "fps", "latency", "coords", "durability" }
+local values, left, right = {}, {}, {}        -- reused every update (no new tables 4x a second)
+
 local function UpdateStats()
-    local db, parts = M.db, {}
+    local db = M.db
+    wipe(values); wipe(left); wipe(right)
     if db.fps then
         local fps = math.floor(GetFramerate() + 0.5)
-        parts[#parts + 1] = "|cff" .. (fps >= 50 and "33ff99" or fps >= 25 and "ffd100" or "ff5555") .. fps .. "|r fps"
+        values.fps = "|cff" .. (fps >= 50 and "33ff99" or fps >= 25 and "ffd100" or "ff5555") .. fps .. "|r fps"
     end
     if db.latency then
         local _, _, home, world = GetNetStats()
         local ms = math.max(home or 0, world or 0)
-        parts[#parts + 1] = "|cff" .. Color(ms, 100, 250) .. ms .. "|r ms"
+        values.latency = "|cff" .. Color(ms, 100, 250) .. ms .. "|r ms"
     end
-    -- fps / latency were built above; add coords and durability, then split by side
-    local values = { fps = parts[1], latency = nil, coords = nil, durability = nil }
-    values.fps = db.fps and parts[1] or nil
-    values.latency = db.latency and parts[db.fps and 2 or 1] or nil
-    values.coords = db.coords and Coords() or nil
-    local d = db.durability and Durability()
-    values.durability = d and ("|cff" .. (d >= 50 and "33ff99" or d >= 20 and "ffd100" or "ff5555") .. math.floor(d) .. "%|r") or nil
-    local left, right = {}, {}
-    for _, key in ipairs({ "fps", "latency", "coords", "durability" }) do
+    if db.coords then values.coords = Coords() end
+    if db.durability then
+        if durabilityDirty then durability, durabilityDirty = Durability(), false end
+        local d = durability
+        values.durability = d and ("|cff" .. (d >= 50 and "33ff99" or d >= 20 and "ffd100" or "ff5555") .. math.floor(d) .. "%|r") or nil
+    end
+    for _, key in ipairs(STAT_KEYS) do
         if values[key] then
             local group = (db.side[key] == "RIGHT") and right or left
             group[#group + 1] = values[key]
@@ -208,10 +218,11 @@ local function ApplyStats()
     local bc = BlizzardCoords()
     if bc then bc:SetAlpha((on and M.db.coords) and 0 or 1) end
     locFrame:SetShown(on and (M.db.location or (M.db.time and M.db.clockInside)))
-    if on and not ticker then
+    local needed = stats:IsShown() or locFrame:IsShown()  -- no ticker when nothing is shown
+    if needed and not ticker then
         ticker = C_Timer.NewTicker(0.25, UpdateStats)     -- 4x a second so coordinates feel live
         UpdateStats()
-    elseif not on and ticker then
+    elseif not needed and ticker then
         ticker:Cancel(); ticker = nil
     end
 end
@@ -438,16 +449,22 @@ end
 
 -- Mouseover: fade in-map elements in while the mouse is over the map.
 local fader = CreateFrame("Frame")
-local fadeAlpha, acc = 0, 0
+local fadeAlpha, acc, lastX, lastY, settled = 0, 0, nil, nil, false
+local GetCursorPosition = GetCursorPosition
 fader:SetScript("OnUpdate", function(_, elapsed)
     acc = acc + elapsed
     if acc < 0.03 then return end
     local dt = acc
     acc = 0
+    -- nothing to do while the cursor stands still and the fade has finished
+    local x, y = GetCursorPosition()
+    if settled and x == lastX and y == lastY then return end
+    lastX, lastY = x, y
     local over = Minimap:IsMouseOver(4, -4, -4, 4) or (bin:IsShown() and bin:IsMouseOver())
     local target = over and 1 or 0
     fadeAlpha = fadeAlpha + (target - fadeAlpha) * math.min(1, dt * 10)
     if math.abs(fadeAlpha - target) < 0.01 then fadeAlpha = target end
+    settled = fadeAlpha == target
     for _, e in ipairs(ELEMENTS) do
         local f = e.get()
         local cfg = M.db.elements[e.key]
@@ -456,6 +473,7 @@ fader:SetScript("OnUpdate", function(_, elapsed)
         end
     end
 end)
+fader:SetScript("OnShow", function() settled = false end)   -- re-apply after settings / loading screens
 fader:Hide()
 
 ---------------------------------------------------------------------------
@@ -472,6 +490,7 @@ local function ApplyAll()
     if M.db.bin then C_Timer.After(2, Collect) end      -- after other addons made their buttons
     PlaceElements()
     C_Timer.After(1, PlaceElements)                     -- again, after Blizzard's own minimap layout
+    settled = false
     fader:Show()
 end
 
@@ -537,7 +556,7 @@ function M:BuildSettings(body, page)
         label:SetPoint("TOPLEFT", 4, -y - 4)
         local posBtn = TT.Button(body, "", 110, nil)
         posBtn:SetPoint("TOPLEFT", 210, -y)
-        local mo = TT.Check(body, "Mouseover", function(v) cfg.mouseover = v end)
+        local mo = TT.Check(body, "Mouseover", function(v) cfg.mouseover = v; settled = false end)
         mo:SetPoint("LEFT", posBtn, "RIGHT", 14, 0)
         posBtn:SetScript("OnClick", function(self)
             -- cycle through the positions (right-click goes backwards)

@@ -292,6 +292,7 @@ gearEv:RegisterEvent("INSPECT_READY")
 gearEv:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 gearEv:SetScript("OnEvent", function(_, event)
     if event == "ADDON_LOADED" then HookInspect()
+    elseif not M.enabled then return     -- off: no gear rescans
     elseif event == "INSPECT_READY" then C_Timer.After(0.1, UpdateInspectSlots)
     else C_Timer.After(0.1, UpdateCharacterSlots) end
 end)

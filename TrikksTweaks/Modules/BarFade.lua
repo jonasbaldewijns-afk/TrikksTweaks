@@ -38,9 +38,16 @@ local BARS = {
 local current = {}
 for _, b in ipairs(BARS) do current[b[1]] = 1 end
 
+-- Each bar's frames, looked up once and kept (looking them up every tick made
+-- new tables 30x a second, which the garbage collector then had to clean up).
+local frames = {}
 local function Frames(bar)
-    local list = {}
-    for _, f in ipairs(bar[3]()) do if f then list[#list + 1] = f end end
+    local list = frames[bar[1]]
+    if not list or #list == 0 then
+        list = {}
+        for _, f in ipairs(bar[3]()) do if f then list[#list + 1] = f end end
+        frames[bar[1]] = list
+    end
     return list
 end
 
@@ -48,7 +55,9 @@ end
 -- One check on the whole bar instead of OnEnter on every button, because a
 -- parent frame doesn't get OnEnter when the mouse is on one of its buttons.
 local function Hovered(bar)
-    for _, f in ipairs(Frames(bar)) do
+    local list = Frames(bar)
+    for i = 1, #list do
+        local f = list[i]
         if f:IsVisible() and f:IsMouseOver(6, -6, -6, 6) then return true end
     end
     return false
@@ -56,11 +65,21 @@ end
 
 local function SetBarAlpha(bar, a)
     current[bar[1]] = a
-    for _, f in ipairs(Frames(bar)) do f:SetAlpha(a) end
+    local list = Frames(bar)
+    for i = 1, #list do list[i]:SetAlpha(a) end
 end
 
+-- The driver polls the mouse (there's no "mouse entered this rectangle"
+-- event), but it skips all work while nothing can have changed: same cursor
+-- position, same combat / Edit Mode state and no fade still running.
 local driver = CreateFrame("Frame")
-local acc = 0
+local hover, groupHover = {}, {}          -- reused every tick
+local acc, lastX, lastY, lastState, settled = 0, nil, nil, nil, false
+local GetCursorPosition, InCombatLockdown, UnitAffectingCombat = GetCursorPosition, InCombatLockdown, UnitAffectingCombat
+local abs, min = math.abs, math.min
+
+local function Wake() settled = false end
+
 driver:SetScript("OnUpdate", function(_, elapsed)
     acc = acc + elapsed
     if acc < 0.03 then return end
@@ -68,16 +87,22 @@ driver:SetScript("OnUpdate", function(_, elapsed)
     acc = 0
     local db = M.db
     local editing = EditModeManagerFrame and EditModeManagerFrame.IsEditModeActive
-        and EditModeManagerFrame:IsEditModeActive()
-    local fighting = db.combatShow and (InCombatLockdown() or UnitAffectingCombat("player"))
+        and EditModeManagerFrame:IsEditModeActive() or false
+    local fighting = db.combatShow and (InCombatLockdown() or UnitAffectingCombat("player")) or false
+    local x, y = GetCursorPosition()
+    local state = (editing and 1 or 0) + (fighting and 2 or 0)
+    if settled and x == lastX and y == lastY and state == lastState then return end
+    lastX, lastY, lastState = x, y, state
+
     -- which bars are hovered, and is any bar of each group hovered?
-    local hover, groupHover = {}, {}
+    wipe(hover); wipe(groupHover)
     for _, bar in ipairs(BARS) do
         if db[bar[1]] and Hovered(bar) then
             hover[bar[1]] = true
             groupHover[bar[4]] = true
         end
     end
+    local moving = false
     for _, bar in ipairs(BARS) do
         local key, group = bar[1], bar[4]
         local target = 1
@@ -88,23 +113,29 @@ driver:SetScript("OnUpdate", function(_, elapsed)
             target = show and 1 or db.alpha / 100
         end
         local cur = current[key]
-        if math.abs(cur - target) > 0.01 then
-            SetBarAlpha(bar, cur + (target - cur) * math.min(1, dt * db.speed))   -- ease towards target
+        if abs(cur - target) > 0.01 then
+            SetBarAlpha(bar, cur + (target - cur) * min(1, dt * db.speed))   -- ease towards target
+            moving = true
         elseif cur ~= target then
             SetBarAlpha(bar, target)
         end
     end
+    settled = not moving
 end)
 driver:Hide()
 
-function M:OnEnable() driver:Show() end
+-- frames can be (re)created on loading screens: look them up again then
+driver:RegisterEvent("PLAYER_ENTERING_WORLD")
+driver:SetScript("OnEvent", function() wipe(frames); Wake() end)
+
+function M:OnEnable() Wake(); driver:Show() end
 function M:OnDisable() driver:Hide(); for _, bar in ipairs(BARS) do SetBarAlpha(bar, 1) end end
 
 function M:BuildSettings(body, page)
     local db, checks = M.db, {}
     local function Check(text, key, x, y)
         local cb = TT.Check(body, text, function(v)
-            db[key] = v
+            db[key] = v; Wake()
             if not v then for _, bar in ipairs(BARS) do if bar[1] == key then SetBarAlpha(bar, 1) end end end
         end)
         cb:SetPoint("TOPLEFT", x, y)
@@ -132,7 +163,7 @@ function M:BuildSettings(body, page)
     if i % 2 == 1 then y = y - 24 end
     Check("Hovering one action bar shows all of them", "linkBars", 2, y - 6)
     Check("Show action bars and unit frames fully in combat", "combatShow", 2, y - 30)
-    local alpha = TT.Stepper(body, "Faded opacity %", function() return db.alpha end, function(v) db.alpha = v end, 0, 100, 5)
+    local alpha = TT.Stepper(body, "Faded opacity %", function() return db.alpha end, function(v) db.alpha = v; Wake() end, 0, 100, 5)
     alpha:SetPoint("TOPLEFT", 0, y - 62)
     local speed = TT.Stepper(body, "Fade speed", function() return db.speed end, function(v) db.speed = v end, 2, 20, 1)
     speed:SetPoint("TOPLEFT", alpha, "BOTTOMLEFT", 0, -2)

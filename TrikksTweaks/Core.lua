@@ -735,11 +735,49 @@ loader:SetScript("OnEvent", function(_, _, name)
     Settings.RegisterAddOnCategory(Settings.RegisterCanvasLayoutCategory(panel, panel.name))
 end)
 
+-- /trikks perf: how much memory each Trikks addon uses, and how fast that
+-- grows over 10 seconds. Growth = temporary tables / strings made and thrown
+-- away (garbage), which is what eventually causes collector stutters. The
+-- CPU time per frame is shown too when the client has the addon profiler.
+local PERF_ADDONS = { "TrikksTweaks", "TrikksReskins", "TrikksAuras" }
+local function Loaded(name)
+    if C_AddOns and C_AddOns.IsAddOnLoaded then return C_AddOns.IsAddOnLoaded(name) end
+    return IsAddOnLoaded and IsAddOnLoaded(name)
+end
+local function CPU(name)
+    local P, E = C_AddOnProfiler, Enum and Enum.AddOnProfilerMetric
+    if not (P and P.GetAddOnMetric and E and E.RecentAverageTime) then return end
+    local ok, ms = pcall(P.GetAddOnMetric, name, E.RecentAverageTime)
+    if ok and type(ms) == "number" and not TT.IsSecret(ms) then return ms end
+end
+function TT.Perf()
+    UpdateAddOnMemoryUsage()
+    local before = {}
+    for _, name in ipairs(PERF_ADDONS) do
+        if Loaded(name) then before[name] = GetAddOnMemoryUsage(name) end
+    end
+    TT.Print("measuring for 10 seconds... (play normally)")
+    C_Timer.After(10, function()
+        UpdateAddOnMemoryUsage()
+        for _, name in ipairs(PERF_ADDONS) do
+            if before[name] then
+                local kb = GetAddOnMemoryUsage(name)
+                local line = string.format("%s: |cffffffff%.0f KB|r, grew |cffffffff%.1f KB|r in 10s",
+                    name, kb, math.max(0, kb - before[name]))
+                local ms = CPU(name)
+                if ms then line = line .. string.format(", |cffffffff%.3f ms|r per frame", ms) end
+                TT.Print(line)
+            end
+        end
+    end)
+end
+
 -- (not /tt: WoW already uses that for "tell target")
 SLASH_TRIKKSTWEAKS1, SLASH_TRIKKSTWEAKS2 = "/trikks", "/tweaks"
 SlashCmdList.TRIKKSTWEAKS = function(msg)
     local cmd, arg = strsplit(" ", strtrim(msg or ""), 2)
     if cmd and cmd:lower() == "dump" then TT.Dump(arg)       -- developer tool (Inspector.lua)
+    elseif cmd and cmd:lower() == "perf" then TT.Perf()
     elseif cmd and (cmd:lower() == "profile" or cmd:lower() == "export" or cmd:lower() == "import") then
         if TT.OpenProfiles then TT.OpenProfiles() end
     elseif cmd and cmd:lower() == "minimap" then               -- /trikks minimap: show / hide the button

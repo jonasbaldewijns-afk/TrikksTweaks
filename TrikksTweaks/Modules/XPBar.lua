@@ -1,7 +1,7 @@
 -- Module: XP Bar
 -- The XP bar, easier to read:
 --   * text always visible, shorter: 45%  ·  2,750 to go  ·  +20% rested  ·  +12% from quests
---   * always blue (Blizzard turns it purple while you have rested XP)
+--   * always blue (Blizzard's is purple, and only blue while you're rested)
 --   * a band showing how far your rested XP reaches
 --   * a gold band for the XP waiting in quests that are complete (ready to hand in)
 --
@@ -19,11 +19,13 @@ local M = TT:RegisterModule("XPBar", {
 })
 
 local IsSecret = TT.IsSecret
-local BLUE_FILL = "UI-HUD-ExperienceBar-Fill-Experience"
-local BLUE_FLARE = "UI-HUD-ExperienceBar-Flare-XP-2x-Flipbook"
-local BLUE_LEVELUP = "UI-HUD-ExperienceBar-Fill-Experience-2x-Flipbook"
-local REST_COLOR = { 0.35, 0.55, 1, 0.35 }
-local QUEST_COLOR = { 1, 0.78, 0.1, 0.55 }
+-- In this HUD the normal XP fill is purple and the rested one is blue: "always
+-- blue" = always the rested textures (fill, gain flare, level-up animation)
+local BLUE_FILL = "UI-HUD-ExperienceBar-Fill-Rested"
+local BLUE_FLARE = "UI-HUD-ExperienceBar-Flare-Rested-2x-Flipbook"
+local BLUE_LEVELUP = "UI-HUD-ExperienceBar-Fill-Rested-2x-Flipbook"
+local REST_COLOR = { 0.6, 0.85, 1, 0.28 }       -- pale blue, lighter than the fill
+local QUEST_COLOR = { 1, 0.86, 0.3, 0.32 }      -- light gold, see-through
 
 local function Num(v) if v == nil or IsSecret(v) then return nil end return tonumber(v) end
 
@@ -91,16 +93,17 @@ local function ShortText(bar)
     local text = string.format("%d%%  ·  %s to go", math.floor(cur / max * 100), BreakUpLargeNumbers(max - cur))
     local rested = Num(GetXPExhaustion and GetXPExhaustion())
     if M.db.rested and rested and rested > 0 then
-        text = text .. string.format("  ·  +%d%% rested", math.floor(rested / max * 100))
+        local pct = rested / max * 100
+        text = text .. (pct < 1 and "  ·  <1% rested" or string.format("  ·  +%d%% rested", math.floor(pct)))
     end
     local q = M.db.questText and QuestXP() or 0
     if q > 0 then text = text .. string.format("  ·  |cffffd040+%d%% from quests|r", math.floor(q / max * 100)) end
     bar.OverlayFrame.Text:SetText(text)
 end
 
--- always blue: right after Blizzard picked purple (rested) or blue
-local function Blue(bar, isRested)
-    if not (M.enabled and M.db.blue and isRested) then return end
+-- always blue: right after Blizzard picked purple (normal) or blue (rested)
+local function Blue(bar)
+    if not (M.enabled and M.db.blue) then return end
     local sb = bar.StatusBar
     if sb.SetBarTexture then pcall(sb.SetBarTexture, sb, BLUE_FILL) end
     if sb.SetAnimationTextures then pcall(sb.SetAnimationTextures, sb, BLUE_FLARE, BLUE_LEVELUP) end
@@ -149,7 +152,7 @@ local function Refresh()
         if bar.Update then bar:Update() end           -- Blizzard's own textures and text first
         -- the colour: Blizzard only picks it when the rested state changes, so pick it now
         local rested = Num(GetXPExhaustion and GetXPExhaustion())
-        if rested and rested > 0 and bar.UpdateStatusBarTextures then bar:UpdateStatusBarTextures(true) end
+        if bar.UpdateStatusBarTextures then bar:UpdateStatusBarTextures(rested and rested > 0 or false) end
         if bar.UpdateCurrentText then bar:UpdateCurrentText() end
         Bands(bar)
     end
@@ -191,7 +194,7 @@ function M:BuildSettings(body, page)
     Check("rested", "...with rested XP:  ·  +20% rested", Refresh)
     Check("questText", "...with completed quests:  ·  +12% from quests", Refresh)
     y = y + 6
-    Check("blue", "Always blue (Blizzard makes it purple while you have rested XP)", Refresh)
+    Check("blue", "Always blue (Blizzard's is purple, and only blue while you're rested)", Refresh)
     Check("restedBand", "Band showing how far your rested XP reaches", Refresh)
     Check("questBand", "Gold band for XP from quests that are complete (ready to hand in)", Refresh)
     local help = TT.Label(body,

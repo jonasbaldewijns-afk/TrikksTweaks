@@ -1,7 +1,7 @@
 -- Module: Mouseover Bars
 -- Fades bars out and fades them back in while your mouse is over them: the
--- micro menu, the bag bar, any of the action bars, and the player / target
--- frames. Action bars are protected frames, but changing how see-through a
+-- micro menu, the bag bar, the XP / reputation bars, any of the action bars,
+-- and the player / target frames. Action bars are protected frames, but changing how see-through a
 -- frame is (SetAlpha) is allowed even in combat, so this works everywhere.
 local _, TT = ...
 local M = TT:RegisterModule("BarFade", {
@@ -9,7 +9,7 @@ local M = TT:RegisterModule("BarFade", {
     category = "Interface",
     desc = "Hides the micro menu, bag bar, action bars or player / target frames until you move your mouse over them.",
     defaults = {
-        micro = true, bags = true, link = true, alpha = 0, speed = 8,
+        micro = true, bags = true, xp = false, link = true, alpha = 0, speed = 8,
         -- 1.4: action bars and unit frames (all off until you tick them)
         main = false, bar2 = false, bar3 = false, bar4 = false, bar5 = false, bar6 = false, bar7 = false, bar8 = false,
         stance = false, pet = false, player = false, target = false,
@@ -18,10 +18,16 @@ local M = TT:RegisterModule("BarFade", {
 })
 
 -- key -> label, the frames, and the group it belongs to ("menu" bars link
--- with each other, "action" bars link when linkBars is on)
+-- with each other, "action" bars link when linkBars is on). An optional 5th
+-- entry = the frames to fade, when that isn't the hovered frame itself.
 local BARS = {
     { "micro",  "Micro menu (character, spellbook, ... buttons)", function() return { MicroMenuContainer or MicroMenu } end, "menu" },
     { "bags",   "Bag bar",            function() return { BagsBar, BagSlotCluster } end, "menu" },
+    -- XP / reputation: Blizzard animates the containers' own opacity (when the
+    -- tracked bar changes), so the fade goes on their parent instead
+    { "xp",     "XP / reputation bars",
+      function() return { MainStatusTrackingBarContainer, SecondaryStatusTrackingBarContainer } end, "menu",
+      function() return { StatusTrackingBarManager } end },
     { "main",   "Action bar 1",       function() return { MainActionBar or MainMenuBar } end, "action" },
     { "bar2",   "Action bar 2",       function() return { MultiBarBottomLeft } end, "action" },
     { "bar3",   "Action bar 3",       function() return { MultiBarBottomRight } end, "action" },
@@ -40,16 +46,18 @@ for _, b in ipairs(BARS) do current[b[1]] = 1 end
 
 -- Each bar's frames, looked up once and kept (looking them up every tick made
 -- new tables 30x a second, which the garbage collector then had to clean up).
-local frames = {}
-local function Frames(bar)
-    local list = frames[bar[1]]
+local frames, fadeFrames = {}, {}
+local function Lookup(cache, key, fn)
+    local list = cache[key]
     if not list or #list == 0 then
         list = {}
-        for _, f in ipairs(bar[3]()) do if f then list[#list + 1] = f end end
-        frames[bar[1]] = list
+        for _, f in pairs(fn()) do if f then list[#list + 1] = f end end
+        cache[key] = list
     end
     return list
 end
+local function Frames(bar) return Lookup(frames, bar[1], bar[3]) end
+local function FadeFrames(bar) return bar[5] and Lookup(fadeFrames, bar[1], bar[5]) or Frames(bar) end
 
 -- Mouse anywhere inside the bar's rectangle (+6px so gaps don't flicker)?
 -- One check on the whole bar instead of OnEnter on every button, because a
@@ -66,7 +74,7 @@ end
 local function SetBarAlpha(bar, a)
     current[bar[1]] = a
     if bar[1] == "player" and TT.playerFrameHidden then return end   -- Solo Party Frame hides it
-    local list = Frames(bar)
+    local list = FadeFrames(bar)
     for i = 1, #list do list[i]:SetAlpha(a) end
 end
 
@@ -129,7 +137,7 @@ function M:Setup()
 
     -- frames can be (re)created on loading screens: look them up again then
     driver:RegisterEvent("PLAYER_ENTERING_WORLD")
-    driver:SetScript("OnEvent", function() wipe(frames); Wake() end)
+    driver:SetScript("OnEvent", function() wipe(frames); wipe(fadeFrames); Wake() end)
 end
 
 function M:OnEnable() Wake(); driver:Show() end
@@ -152,9 +160,10 @@ function M:BuildSettings(body, page)
     Head("Menus", -2)
     Check("Fade the micro menu (character, spellbook, ... buttons)", "micro", 2, -20)
     Check("Fade the bag bar", "bags", 2, -44)
-    Check("Hovering one of these shows both", "link", 2, -68)
-    Head("Action bars and unit frames", -100)
-    local y = -118
+    Check("Fade the XP / reputation bars", "xp", 2, -68)
+    Check("Hovering one of these shows all of them", "link", 2, -92)
+    Head("Action bars and unit frames", -124)
+    local y = -142
     local i = 0
     for _, bar in ipairs(BARS) do
         if bar[4] ~= "menu" then

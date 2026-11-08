@@ -16,7 +16,8 @@ local C = TT.C
 local IsSecret = TT.IsSecret
 
 local function Profile(label)
-    return { name = "", label = label, subject = "", items = {}, types = {}, gold = false, keepGold = 50 }
+    return { name = "", label = label, subject = "", items = {}, types = {}, gold = false, keepGold = 50,
+             hideOn = {} }           -- characters ("Name-Realm") that don't show this button
 end
 local M = TT:RegisterModule("BankAlt", {
     title = "Mail to Alts",
@@ -53,6 +54,10 @@ local function NameOf(key)
     local n = strtrim(P(key).name or "")
     return n ~= "" and n or nil
 end
+-- this character, as the key in hideOn
+local function CharKey() return UnitName("player") .. "-" .. (GetRealmName() or "") end
+local function HiddenHere(key) return P(key).hideOn[CharKey()] and true or false end
+
 local function IsMe(name)
     if not name then return false end
     local me = UnitName("player"):lower()
@@ -216,7 +221,7 @@ UpdateButtons = function()
     for _, key in ipairs(KEYS) do
         local b = buttons[key]
         local to = NameOf(key)
-        local show = open and to and not IsMe(to) and true or false
+        local show = open and to and not IsMe(to) and not HiddenHere(key) and true or false
         b:SetShown(show)
         if show then
             b:ClearAllPoints()
@@ -365,7 +370,15 @@ function M:BuildSettings(body, page)
     Box("Character name", "name", 180)
     Box("Button label", "label", 180)
     Box("Mail subject", "subject", 180)
-    y = y + 4
+    -- per character: show this profile's button at the mailbox here or not
+    local here = TT.Check(body, "", function(v) P(shown).hideOn[CharKey()] = (not v) or nil; UpdateButtons() end)
+    here:SetPoint("TOPLEFT", 2, -y)
+    refreshers[#refreshers + 1] = function()
+        here.Text:SetText("Show this button on " .. UnitName("player") .. " (the character you're on)")
+        here:SetHitRectInsets(0, -(here.Text:GetStringWidth() + 12), -4, -4)
+        here:SetChecked(not HiddenHere(shown))
+    end
+    y = y + 28
 
     Head("Item types to send")
     for i, t in ipairs(TYPES) do

@@ -1,5 +1,18 @@
 # Trikks Tweaks
 
+## 1.4
+
+### New modules
+Every module is off on a fresh install: turn on what you want in `/trikks`.
+
+- **Mail to Alts**: set up two characters (your main and your bank alt), each with what it should get: item types (cloth, leather, ore, herbs, ...), unbound BoE gear from a chosen quality, an always-send item list (drop an item on it) and all gold above an amount you keep. At a mailbox each character gets a button that opens a send panel. Tick item types (it shows how many you have of each) and type an amount of gold for this one send, or **Quick send** everything you set up. 12 items per mail, one mail after another, gold in the last one. Soulbound, locked and quest items are never sent. You choose per character which buttons show.
+- **Bulk Buy**: Shift-click an item at a vendor to buy any amount, not just one stack. Shows the total price, what fits in your bags and what you can afford, and buys one stack at a time. Items that cost tokens or currency keep Blizzard's own pop-up.
+- **Auction House Keys**: on the auction house sell page, Space = Create Auction and Shift-Space = Max quantity. Both can be rebound. They only work there, and not while you type in a price box.
+
+### Changes
+- **Buff Reminders**: rogues get a poison reminder per weapon (main hand and off hand). Clicking it puts a poison from your bags on that weapon.
+- **Chat**: the copy window works again. It now keeps its own record of each chat tab and tells you when the game hid lines.
+
 ## 1.3
 
 ### New modules

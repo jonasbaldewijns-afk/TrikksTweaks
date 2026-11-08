@@ -4,7 +4,7 @@
 -- The result is stored in TrikksTweaksDB.dumps and written to disk on /reload
 -- or logout (WTF\Account\<account>\SavedVariables\TrikksTweaks.lua).
 local _, TT = ...
-local MAX_NODES, MAX_DEPTH = 4000, 12
+local MAX_NODES, MAX_DEPTH, MAX_KIDS = 4000, 12, 40
 
 local function S(v)                            -- safe tostring (secret values)
     if v == nil then return "" end
@@ -29,8 +29,12 @@ end
 function TT.Dump(target)
     local frame
     if target and target ~= "" then
-        frame = _G[target]
-        if not frame then TT.Print("no frame called " .. target); return end
+        -- a global name, or a path like WorldMapFrame.BorderFrame
+        for part in target:gmatch("[^%.]+") do
+            frame = (frame == nil) and _G[part] or (type(frame) == "table" and frame[part] or nil)
+            if frame == nil then break end
+        end
+        if type(frame) ~= "table" or not frame.GetObjectType then TT.Print("no frame called " .. target); return end
     else
         local foci = GetMouseFoci and GetMouseFoci() or { GetMouseFocus and GetMouseFocus() }
         frame = foci and foci[1]
@@ -61,11 +65,18 @@ function TT.Dump(target)
             end
             Add(depth + 1, "- " .. Describe(r, f, i) .. " <" .. t .. ">" .. info .. (r:IsShown() and "" or " (hidden)"))
         end
-        for i, c in ipairs({ f:GetChildren() }) do Walk(c, f, depth + 1, i) end
+        -- huge child lists (map pins, list rows) would eat the whole budget:
+        -- summarise them in one line instead
+        local kids = { f:GetChildren() }
+        if #kids > MAX_KIDS then
+            Add(depth + 1, string.format("(%d children, not listed)", #kids))
+        else
+            for i, c in ipairs(kids) do Walk(c, f, depth + 1, i) end
+        end
     end
     Walk(frame, nil, 0, 1)
 
-    local name = frame:GetName() or "unnamed"
+    local name = frame:GetName() or (target ~= "" and target) or "unnamed"
     TrikksTweaksDB.dumps = TrikksTweaksDB.dumps or {}
     TrikksTweaksDB.dumps[name] = lines
     TT.Print(string.format("dumped %s (%d lines). /reload to save it to disk.", name, #lines))

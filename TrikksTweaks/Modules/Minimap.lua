@@ -242,7 +242,14 @@ local function Grab(btn)
     if binned[btn] or not btn or btn == binBtn then return end
     binned[btn] = true
     btn.ttWasShown = btn:IsShown()
+    -- LibDBIcon pins its buttons to the MEDIUM strata (fixed strata / level), so
+    -- they'd ignore the new parent and stay behind the bin's background (DIALOG).
+    -- Unpin them and put them on the bin's own layer, above its background.
+    if btn.SetFixedFrameStrata then btn:SetFixedFrameStrata(false) end
+    if btn.SetFixedFrameLevel then btn:SetFixedFrameLevel(false) end
     btn:SetParent(bin)
+    btn:SetFrameStrata(bin:GetFrameStrata())
+    btn:SetFrameLevel(bin:GetFrameLevel() + 2)
     btn:SetScript("OnDragStart", nil)        -- no dragging them back around the map
     btn:SetScript("OnDragStop", nil)
     -- LibDBIcon re-positions its buttons now and then; put them back in the grid.

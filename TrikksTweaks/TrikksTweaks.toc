@@ -25,6 +25,7 @@ Modules\DarkMode.lua
 Modules\BarFade.lua
 Modules\Minimap.lua
 Modules\ClutterText.lua
+Modules\XPBar.lua
 Modules\Tooltips.lua
 Modules\HideFrames.lua
 Modules\CharacterExtras.lua

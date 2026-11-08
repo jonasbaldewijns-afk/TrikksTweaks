@@ -25,11 +25,15 @@ local INSET = { TOPLEFT = { 12, -32 }, TOPRIGHT = { -12, -32 }, BOTTOMLEFT = { 1
 ---------------------------------------------------------------------------
 -- Durability on the character window
 ---------------------------------------------------------------------------
+-- Durability and volume live on the gear page (not the whole window): other
+-- tabs (skills, reputation, ...) have lists in the same corners.
+local function GearPage() return PaperDollFrame or CharacterFrame end
+
 local durText
 local function UpdateDurability()
     if not CharacterFrame then return end
     if not durText then
-        durText = CharacterFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        durText = GearPage():CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     end
     local on = M.enabled and M.db.durability
     durText:SetShown(on)
@@ -54,15 +58,13 @@ end
 local vol
 local function MakeVolume()
     if vol or not CharacterFrame then return end
-    vol = CreateFrame("Slider", nil, CharacterFrame, "BackdropTemplate")
+    vol = CreateFrame("Slider", nil, GearPage(), "BackdropTemplate")
     vol:SetOrientation("HORIZONTAL")
     vol:SetSize(110, 8)
     -- a slider made in code ignores the mouse until told otherwise (Blizzard's
     -- XML templates switch this on for their sliders)
     vol:EnableMouse(true)
     vol:SetHitRectInsets(-4, -4, -6, -6)                 -- bigger grab area than the thin bar
-    -- above the window's other parts (the 3D model area catches the mouse to rotate)
-    vol:SetFrameLevel(CharacterFrame:GetFrameLevel() + 20)
     TT.Flat(vol, { 0.04, 0.04, 0.05, 1 })
     vol:SetThumbTexture(WHITE)
     local thumb = vol:GetThumbTexture()
@@ -94,6 +96,10 @@ local function UpdateVolume()
     local pos = M.db.volPos
     vol:ClearAllPoints()
     vol:SetPoint(pos, CharacterFrame, pos, INSET[pos][1], INSET[pos][2] + (pos:find("TOP") and -14 or 0))
+    -- well above the page's other parts: the 3D model and the gear slots catch
+    -- the mouse, and on this client they sit many levels up (set every time:
+    -- frame levels can change when the window is rebuilt)
+    vol:SetFrameLevel(math.min(9000, GearPage():GetFrameLevel() + 200))
     vol:SetValue((tonumber(C_CVar.GetCVar("Sound_MasterVolume")) or 1) * 100)
 end
 

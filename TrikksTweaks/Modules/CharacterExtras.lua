@@ -57,6 +57,12 @@ local function MakeVolume()
     vol = CreateFrame("Slider", nil, CharacterFrame, "BackdropTemplate")
     vol:SetOrientation("HORIZONTAL")
     vol:SetSize(110, 8)
+    -- a slider made in code ignores the mouse until told otherwise (Blizzard's
+    -- XML templates switch this on for their sliders)
+    vol:EnableMouse(true)
+    vol:SetHitRectInsets(-4, -4, -6, -6)                 -- bigger grab area than the thin bar
+    -- above the window's other parts (the 3D model area catches the mouse to rotate)
+    vol:SetFrameLevel(CharacterFrame:GetFrameLevel() + 20)
     TT.Flat(vol, { 0.04, 0.04, 0.05, 1 })
     vol:SetThumbTexture(WHITE)
     local thumb = vol:GetThumbTexture()

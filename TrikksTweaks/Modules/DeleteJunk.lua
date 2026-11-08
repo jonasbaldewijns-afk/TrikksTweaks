@@ -7,7 +7,7 @@ local _, TT = ...
 local M = TT:RegisterModule("DeleteJunk", {
     title = "Delete Junk",
     category = "Quality of Life",
-    desc = "Press Backspace to destroy the cheapest grey item in your bags (sells it instead at a vendor). Optionally water and / or food too.",
+    desc = "Press Backspace to destroy the cheapest grey item in your bags (sells it instead at a vendor). Optionally water and / or food too, cheapest first.",
     defaults = { key = "BACKSPACE", byStack = true, onlyFull = false, announce = true, sellAtVendor = true,
                  maxValue = 0, keep = {}, water = false, food = false },
 })
@@ -52,27 +52,25 @@ local function FoodOrWater(itemID, quality)
     return false
 end
 
--- the item to get rid of: greys first; only when there are none left, water /
--- food (if switched on). Lowest value wins (whole stack, or per item), never
--- one on the keep list, never one worth more than the set limit.
+-- the item to get rid of: whatever is worth the least at a vendor (whole
+-- stack, or per item), out of your greys plus water / food if switched on.
+-- Never one on the keep list, never one worth more than the set limit.
 local function FindCheapest()
-    local db, best, bestRank = M.db, nil, nil
+    local db, best = M.db, nil
     local lastBag = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4
     for bag = 0, lastBag do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            local rank = info and not TT.IsSecret(info) and not info.isLocked and info.itemID
-                and not Kept(info.itemID)
-                and ((info.quality == 0 and 1) or (FoodOrWater(info.itemID, info.quality) and 2))
-            if rank then
+            if info and not TT.IsSecret(info) and not info.isLocked and info.itemID
+               and not Kept(info.itemID)
+               and (info.quality == 0 or FoodOrWater(info.itemID, info.quality)) then
                 local each, count = Price(info.itemID), info.stackCount or 1
                 local total = each * count
                 local value = db.byStack and total or each
                 if (db.maxValue == 0 or total <= db.maxValue * 100)
-                   and (not best or rank < bestRank or (rank == bestRank and value < best.value)) then
+                   and (not best or value < best.value) then
                     best = { bag = bag, slot = slot, id = info.itemID, link = info.hyperlink,
                              count = count, total = total, value = value }
-                    bestRank = rank
                 end
             end
         end
@@ -176,8 +174,8 @@ function M:BuildSettings(body, page)
     refreshers[#refreshers + 1] = cycle.Refresh
     y = y + 34
 
-    Check("water", "Also water, once no grey items are left (classes without mana)")
-    Check("food", "Also food, once no grey items are left (e.g. mages with their own)")
+    Check("water", "Also water (classes without mana)")
+    Check("food", "Also food (e.g. mages with their own)")
     Check("sellAtVendor", "With a vendor open, sell it instead of deleting")
     Check("onlyFull", "Only when my bags are full (else the key does its normal thing)")
     Check("announce", "Say in chat what was deleted / sold")
@@ -200,8 +198,9 @@ function M:BuildSettings(body, page)
     y = y + 168
 
     local help = TT.Label(body,
-        "Grey (poor quality) items first, one per key press; water / food only when ticked\n" ..
-        "and only white or grey ones (mage \"refreshment\" counts when both are ticked).\n" ..
+        "One item per key press: the one worth the least at a vendor (as a whole stack,\n" ..
+        "unless you pick per item above), out of your greys and, when ticked, water / food.\n" ..
+        "Water / food: only white or grey ones; mage \"refreshment\" counts when both are ticked.\n" ..
         "Not during combat (WoW locks key handling then) and not while you're typing.\n" ..
         "Tip: hold Ctrl over an item with IDs & Links on to see its item ID.", "GameFontDisableSmall")
     help:SetPoint("TOPLEFT", 0, -y - 4)

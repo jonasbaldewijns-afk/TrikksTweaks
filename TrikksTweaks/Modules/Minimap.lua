@@ -19,6 +19,7 @@ local M = TT:RegisterModule("Minimap", {
         -- while the mouse is over the map.
         hideZone = true,
         moveUp = true,
+        corner = true,       -- square map: flush in the top-right corner of its Edit Mode box
         elements = {
             tracking   = { pos = "TOPLEFT",     mouseover = true },
             difficulty = { pos = "TOPLEFT",     mouseover = true },
@@ -342,9 +343,10 @@ local placing, fights, fightReset = false, 0, 0
 local PlaceElements, PlaceZone
 
 -- Blizzard (or another addon) re-anchors some of these now and then: put them back.
+local guarded = {}          -- kept here, not as a field on Blizzard's frames (taint)
 local function Guard(f)
-    if f.ttGuarded then return end
-    f.ttGuarded = true
+    if guarded[f] then return end
+    guarded[f] = true
     hooksecurefunc(f, "SetPoint", function()
         if placing or not M.enabled then return end
         -- if another addon keeps moving it back, stop fighting after a while
@@ -415,6 +417,24 @@ local function MoveMapUp()
     end
 end
 
+-- Square map: pin the map itself to the top-right corner of the cluster (the
+-- box Edit Mode moves). Blizzard centres the 198px map in a ~253px container
+-- to leave room for the round border art; with a square map that room is
+-- just empty space around it. Offset 1 so the 1px border stays inside.
+local mapPinned = false
+local function PinMap()
+    if M.db.square and M.db.corner then
+        Guard(Minimap)
+        Minimap:ClearAllPoints()
+        Minimap:SetPoint("TOPRIGHT", MinimapCluster, "TOPRIGHT", -1, -1)
+        mapPinned = true
+    elseif mapPinned then
+        Minimap:ClearAllPoints()
+        Minimap:SetPoint("CENTER", MinimapCluster.MinimapContainer or Minimap:GetParent())   -- Blizzard's default
+        mapPinned = false
+    end
+end
+
 PlaceZone = function()
     if not MinimapCluster then return end
     local hide = M.db.hideZone and true or false
@@ -423,6 +443,7 @@ PlaceZone = function()
         if f then Step(key, FadeZoneFrame, f, hide) end
     end
     Step("move map up", MoveMapUp)
+    Step("pin map to corner", PinMap)
 end
 
 PlaceElements = function()
@@ -568,6 +589,7 @@ function M:BuildSettings(body, page)
     Head("Minimap elements")
     Check("hideZone", "Hide the zone name bar above the map", nil, function() PlaceElements() end)
     Check("moveUp", "Move the map up into the gap", true, function() PlaceElements() end)
+    Check("corner", "Square map: push it into the top-right corner of its Edit Mode box", nil, function() PlaceElements() end)
     local rows = {}
     for _, e in ipairs(ELEMENTS) do
         local cfg = db.elements[e.key]

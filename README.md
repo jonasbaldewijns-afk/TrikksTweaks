@@ -2,6 +2,8 @@
 
 A modular quality-of-life and interface addon for the **WoW Forever** client. Every feature is its own module: **nothing is on by default**, so you switch on exactly what you want and leave the rest alone.
 
+Share or move your whole setup with **Export / import** on the Modules page (or `/trikks profile`).
+
 Open the settings with **/trikks** (or the minimap button / addon compartment).
 
 ## Install

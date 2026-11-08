@@ -471,15 +471,17 @@ local function BuildHome()
     end
     p.Layout(nil)
 
-    local note = TT.Label(p, "Something stuck after turning a module off? Reload.", "GameFontDisableSmall")
+    local note = TT.Label(p, "Stuck after turning a module off? Reload.", "GameFontDisableSmall")
     note:SetPoint("BOTTOMLEFT", 0, 6)
     local rl = TT.Button(p, "Reload UI", 100, function() C_UI.Reload() end)
     rl:SetPoint("BOTTOMRIGHT", 0, 0)
+    local prof = TT.Button(p, "Export / import", 110, function() if TT.OpenProfiles then TT.OpenProfiles() end end)
+    prof:SetPoint("RIGHT", rl, "LEFT", -6, 0)
     -- the minimap button itself lives in MinimapButton.lua
     p.minimapCB = TT.Check(p, "Minimap button", function(v)
         if TT.SetMinimapButtonShown then TT.SetMinimapButtonShown(v) end
     end)
-    p.minimapCB:SetPoint("RIGHT", rl, "LEFT", -110, 0)
+    p.minimapCB:SetPoint("RIGHT", prof, "LEFT", -110, 0)
     return p
 end
 
@@ -738,6 +740,8 @@ SLASH_TRIKKSTWEAKS1, SLASH_TRIKKSTWEAKS2 = "/trikks", "/tweaks"
 SlashCmdList.TRIKKSTWEAKS = function(msg)
     local cmd, arg = strsplit(" ", strtrim(msg or ""), 2)
     if cmd and cmd:lower() == "dump" then TT.Dump(arg)       -- developer tool (Inspector.lua)
+    elseif cmd and (cmd:lower() == "profile" or cmd:lower() == "export" or cmd:lower() == "import") then
+        if TT.OpenProfiles then TT.OpenProfiles() end
     elseif cmd and cmd:lower() == "minimap" then               -- /trikks minimap: show / hide the button
         TT.SetMinimapButtonShown(not TT.MinimapButtonShown())
     elseif msg and strtrim(msg) ~= "" then                   -- /trikks <words>: search

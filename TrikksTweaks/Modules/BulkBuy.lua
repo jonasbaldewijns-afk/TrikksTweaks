@@ -139,7 +139,7 @@ local function OnModifiedClick(button)
     -- reached through two routes (see Setup): handle each click once
     if lastButton == button and lastTime == GetTime() then return end
     lastButton, lastTime = button, GetTime()
-    if not (MerchantFrame and MerchantFrame.selectedTab == 1) or not IsModifiedClick("SPLITSTACK") then return end
+    if not (MerchantFrame and MerchantFrame.selectedTab == 1) or not IsModifiedClick("SPLITSTACK") then return "not on the vendor's buy tab" end
     local index = button:GetID()
     local info = C_MerchantFrame and C_MerchantFrame.GetItemInfo and C_MerchantFrame.GetItemInfo(index)
     if not info and GetMerchantItemInfo then             -- older API: plain return values
@@ -147,10 +147,17 @@ local function OnModifiedClick(button)
         info = name and { name = name, texture = texture, price = price, stackCount = stackCount,
                           numAvailable = numAvailable, hasExtendedCost = extendedCost } or nil
     end
-    if not info or info.hasExtendedCost or button.showNonrefundablePrompt then return end
-    if not info.price or info.price <= 0 or (MERCHANT_HIGH_PRICE_COST and info.price >= MERCHANT_HIGH_PRICE_COST) then return end
+    if not info then return "no item info for slot " .. tostring(index) end
+    if info.hasExtendedCost then return "it costs tokens or currency" end
+    if button.showNonrefundablePrompt then return "it isn't refundable" end
+    if not info.price or info.price <= 0 then return "it has no gold price" end
+    if MERCHANT_HIGH_PRICE_COST and info.price >= MERCHANT_HIGH_PRICE_COST then return "it's very expensive (Blizzard confirms those)" end
     local itemID = GetMerchantItemID and GetMerchantItemID(index)
-    if not itemID then return end
+    if not itemID then
+        local link = GetMerchantItemLink and GetMerchantItemLink(index)
+        itemID = link and C_Item.GetItemInfoInstant(link)
+    end
+    if not itemID then return "no item ID for slot " .. tostring(index) end
     if StackSplitFrame and StackSplitFrame:IsShown() then StackSplitFrame:Hide() end
     if not win then MakeWindow() end
     local bundle = math.max(1, info.stackCount or 1)
@@ -183,6 +190,19 @@ function M:Setup()
             b:HookScript("OnClick", Check)
             if b:HasScript("OnModifiedClick") then b:HookScript("OnModifiedClick", Check) end
         end
+    end
+    -- third route, independent of how the vendor buttons are named or wired:
+    -- Blizzard's split pop-up itself, opened for a button inside the vendor window
+    if StackSplitFrame and type(StackSplitFrame.OpenStackSplitFrame) == "function" then
+        hooksecurefunc(StackSplitFrame, "OpenStackSplitFrame", function(_, _, owner)
+            if not (owner and owner.GetID and MerchantFrame and MerchantFrame:IsShown()) then return end
+            local f = owner
+            while f and f ~= MerchantFrame do f = f:GetParent() end
+            if f == MerchantFrame then
+                local why = OnModifiedClick(owner)
+                if why and M.enabled then TT.Print("Bulk Buy: Blizzard's pop-up for this one: " .. why .. ".") end
+            end
+        end)
     end
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("MERCHANT_CLOSED")

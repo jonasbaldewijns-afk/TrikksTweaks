@@ -40,6 +40,8 @@ Modules\Chat.lua
 Modules\SpellID.lua
 Modules\SmallHelpers.lua
 Modules\DeleteJunk.lua
+Modules\AuctionKeys.lua
+Modules\BankAlt.lua
 Modules\BuffReminders.lua
 Modules\Teleports.lua
 Modules\DialogKeys.lua

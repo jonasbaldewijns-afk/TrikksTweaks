@@ -35,6 +35,7 @@ Modules\Automation.lua
 Modules\Social.lua
 Modules\ConsumableMacros.lua
 Modules\VendorBags.lua
+Modules\BulkBuy.lua
 Modules\MoveWindows.lua
 Modules\Chat.lua
 Modules\SpellID.lua

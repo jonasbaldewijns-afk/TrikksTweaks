@@ -7,9 +7,9 @@ local _, TT = ...
 local M = TT:RegisterModule("DeleteJunk", {
     title = "Delete Junk",
     category = "Quality of Life",
-    desc = "Press Backspace to destroy the cheapest grey item in your bags (sells it instead at a vendor).",
+    desc = "Press Backspace to destroy the cheapest grey item in your bags (sells it instead at a vendor). Optionally water and / or food too.",
     defaults = { key = "BACKSPACE", byStack = true, onlyFull = false, announce = true, sellAtVendor = true,
-                 maxValue = 0, keep = {} },
+                 maxValue = 0, keep = {}, water = false, food = false },
 })
 
 local merchantOpen = false
@@ -33,23 +33,46 @@ local function FreeSlots()
     return free
 end
 
--- the grey item to get rid of: lowest value (whole stack, or per item), never
--- one on the keep list, never one worth more than the set limit
+-- Water / food: consumables of the "Food & Drink" kind (class 0, subclass 5).
+-- Which one it is comes from the spell the item casts: "Drink", "Food", or
+-- "Refreshment" (mage food: both at once, so it only counts when both
+-- options are on). Only common (white) or worse, so feasts and the like are safe.
+local CONSUMABLE, FOOD_DRINK = 0, 5
+local function FoodOrWater(itemID, quality)
+    local db = M.db
+    if not (db.water or db.food) or (quality or 0) > 1 then return false end
+    local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+    if classID ~= CONSUMABLE or subclassID ~= FOOD_DRINK then return false end
+    local spell = (C_Item.GetItemSpell and C_Item.GetItemSpell(itemID)) or (GetItemSpell and GetItemSpell(itemID))
+    if type(spell) ~= "string" or TT.IsSecret(spell) then return false end   -- not loaded yet: skip
+    spell = spell:lower()
+    if spell:find("refreshment") then return db.water and db.food end
+    if spell:find("drink") then return db.water end
+    if spell:find("food") then return db.food end
+    return false
+end
+
+-- the item to get rid of: greys first; only when there are none left, water /
+-- food (if switched on). Lowest value wins (whole stack, or per item), never
+-- one on the keep list, never one worth more than the set limit.
 local function FindCheapest()
-    local db, best = M.db, nil
+    local db, best, bestRank = M.db, nil, nil
     local lastBag = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4
     for bag = 0, lastBag do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and not TT.IsSecret(info) and info.quality == 0 and not info.isLocked
-               and info.itemID and not Kept(info.itemID) then
+            local rank = info and not TT.IsSecret(info) and not info.isLocked and info.itemID
+                and not Kept(info.itemID)
+                and ((info.quality == 0 and 1) or (FoodOrWater(info.itemID, info.quality) and 2))
+            if rank then
                 local each, count = Price(info.itemID), info.stackCount or 1
                 local total = each * count
                 local value = db.byStack and total or each
                 if (db.maxValue == 0 or total <= db.maxValue * 100)
-                   and (not best or value < best.value) then
+                   and (not best or rank < bestRank or (rank == bestRank and value < best.value)) then
                     best = { bag = bag, slot = slot, id = info.itemID, link = info.hyperlink,
                              count = count, total = total, value = value }
+                    bestRank = rank
                 end
             end
         end
@@ -63,7 +86,7 @@ local function DeleteCheapest()
     if M.db.onlyFull and FreeSlots() > 0 then return false end   -- bags not full: Backspace does its normal thing
     local item = FindCheapest()
     if not item then
-        if M.db.announce then TT.Print("no grey items to delete.") end
+        if M.db.announce then TT.Print("nothing to delete (no grey items" .. ((M.db.water or M.db.food) and ", water or food" or "") .. ").") end
         return true
     end
     local name = (item.link or ("item " .. item.id)) .. (item.count > 1 and (" x" .. item.count) or "")
@@ -153,6 +176,8 @@ function M:BuildSettings(body, page)
     refreshers[#refreshers + 1] = cycle.Refresh
     y = y + 34
 
+    Check("water", "Also water, once no grey items are left (classes without mana)")
+    Check("food", "Also food, once no grey items are left (e.g. mages with their own)")
     Check("sellAtVendor", "With a vendor open, sell it instead of deleting")
     Check("onlyFull", "Only when my bags are full (else the key does its normal thing)")
     Check("announce", "Say in chat what was deleted / sold")
@@ -175,9 +200,10 @@ function M:BuildSettings(body, page)
     y = y + 168
 
     local help = TT.Label(body,
-        "Only grey (poor quality) items, one per key press. Not during combat (WoW locks\n" ..
-        "key handling then) and not while you're typing. Tip: hold Ctrl over an item with\n" ..
-        "IDs & Links on to see its item ID.", "GameFontDisableSmall")
+        "Grey (poor quality) items first, one per key press; water / food only when ticked\n" ..
+        "and only white or grey ones (mage \"refreshment\" counts when both are ticked).\n" ..
+        "Not during combat (WoW locks key handling then) and not while you're typing.\n" ..
+        "Tip: hold Ctrl over an item with IDs & Links on to see its item ID.", "GameFontDisableSmall")
     help:SetPoint("TOPLEFT", 0, -y - 4)
 
     page.OnPageShow = function() for _, f in ipairs(refreshers) do f() end end

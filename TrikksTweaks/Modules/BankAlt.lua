@@ -319,8 +319,11 @@ UpdateButtons = function()
         b:SetShown(show)
         choosers[key]:SetShown(show)
         if show then
+            -- a row under the Inbox / Send Mail tabs (they hang below the window)
             b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", MailFrame, "BOTTOMLEFT", x, -4)
+            local tab = MailFrameTab1
+            if tab then b:SetPoint("TOPLEFT", tab, "BOTTOMLEFT", x, -4)
+            else b:SetPoint("TOPLEFT", MailFrame, "BOTTOMLEFT", x, -36) end
             choosers[key]:ClearAllPoints()
             choosers[key]:SetPoint("LEFT", b, "RIGHT", 2, 0)
             x = x + b:GetWidth() + choosers[key]:GetWidth() + 10

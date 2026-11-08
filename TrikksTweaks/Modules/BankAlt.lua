@@ -2,7 +2,8 @@
 -- Two saved characters ("Main" and "Bank alt"), each with its own rules:
 -- items to always send (whitelist), whole item types (cloth, herbs, ore, ...)
 -- and all gold above an amount you keep. At a mailbox there is a button per
--- character; it opens a small menu: send all, only items, only gold, settings.
+-- character: a click sends everything set in /trikks (quick send), "..." opens
+-- a panel to pick item types and type an amount of gold for this one send.
 -- The button for the character you're playing is hidden (no mailing yourself).
 --
 -- How sending works: one mail holds up to 12 items. A mail is filled and sent,
@@ -69,51 +70,67 @@ end
 -- get this far), of at least the chosen quality
 local WEAPON = Enum and Enum.ItemClass and Enum.ItemClass.Weapon or 2
 local ARMOR = Enum and Enum.ItemClass and Enum.ItemClass.Armor or 4
-local function Wanted(p, itemID, quality)
-    for _, id in ipairs(p.items) do if id == itemID then return true end end
-    local _, _, _, equipLoc, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
-    if not classID then return false end
-    if p.types.boe and (classID == WEAPON or classID == ARMOR) and equipLoc and equipLoc ~= ""
-       and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE" and quality and not IsSecret(quality)
-       and quality >= (p.boeQuality or 2) then
-        return true
-    end
-    for _, t in ipairs(TYPES) do
-        if p.types[t[1]] and classID == t[3] and (t[4] == nil or subclassID == t[4]) then return true end
-    end
+local function IsBoE(classID, equipLoc, quality, minQ)
+    return (classID == WEAPON or classID == ARMOR) and equipLoc and equipLoc ~= ""
+        and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE" and quality and not IsSecret(quality) and quality >= minQ
+end
+local function InList(r, itemID)
+    for _, id in ipairs(r.items) do if id == itemID then return true end end
     return false
 end
+-- which ticked type an item is (key from TYPES), plus what IsBoE needs
+local function TypeOf(itemID)
+    local _, _, _, equipLoc, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+    if not classID then return nil end
+    for _, t in ipairs(TYPES) do
+        if classID == t[3] and (t[4] == nil or subclassID == t[4]) then return t[1], equipLoc, classID end
+    end
+    return nil, equipLoc, classID
+end
 
--- every bag slot with something for this profile: { bag, slot }
-local function Collect(p)
+-- every bag slot that can be mailed at all: not bound, not locked, no quest item
+local function Mailable()
     local list = {}
     local last = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4
     for bag = 0, last do
         for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.itemID and not IsSecret(info.itemID) and not info.isBound and not info.isLocked
-               and Wanted(p, info.itemID, info.quality) then
+            if info and info.itemID and not IsSecret(info.itemID) and not info.isBound and not info.isLocked then
                 local q = C_Container.GetContainerItemQuestInfo and C_Container.GetContainerItemQuestInfo(bag, slot)
-                if not (q and (q.isQuestItem or q.questID)) then list[#list + 1] = { bag, slot } end
+                if not (q and (q.isQuestItem or q.questID)) then
+                    list[#list + 1] = { bag, slot, itemID = info.itemID, quality = info.quality }
+                end
             end
         end
     end
     return list
 end
 
-local function SpareGold(p, margin)
-    if not p.gold then return 0 end
-    return math.max(0, GetMoney() - (p.keepGold or 0) * 10000 - (margin or 0))
+-- Rules for one send: from a profile, or the send panel's ticks for this time.
+-- { items (the always-send list), useList, types (set), boeQuality, gold, keepGold }
+local function RulesFrom(p)
+    local types = {}
+    for k, v in pairs(p.types) do types[k] = v end
+    return { items = p.items, useList = true, types = types, boeQuality = p.boeQuality or 2,
+             gold = p.gold, keepGold = p.keepGold or 0 }
 end
-
--- what a mode would send right now: items, mails, gold (copper)
-local function Plan(key, mode)
-    local p = P(key)
-    local items = (mode ~= "gold") and #Collect(p) or 0
-    local mails = math.ceil(items / MAX)
-    local gold = (mode ~= "items") and SpareGold(p, (items + 1) * POSTAGE_GUESS) or 0
-    if gold > 0 and mails == 0 then mails = 1 end
-    return items, mails, gold
+local function Wanted(r, s)
+    if r.useList and InList(r, s.itemID) then return true end
+    local tkey, equipLoc, classID = TypeOf(s.itemID)
+    if tkey and r.types[tkey] then return true end
+    return r.types.boe and IsBoE(classID, equipLoc, s.quality, r.boeQuality) or false
+end
+local function Collect(r)
+    local list = {}
+    for _, s in ipairs(Mailable()) do if Wanted(r, s) then list[#list + 1] = s end end
+    return list
+end
+-- gold for this send: a typed amount (send panel), or all above "keep" (settings)
+local function SpareGold(r, margin)
+    local free = math.max(0, GetMoney() - (margin or 0))
+    if r.goldAmount then return math.min(r.goldAmount * 10000, free) end
+    if not r.gold then return 0 end
+    return math.max(0, free - (r.keepGold or 0) * 10000)
 end
 
 local function Money(copper)
@@ -124,10 +141,10 @@ end
 ---------------------------------------------------------------------------
 -- Sending
 ---------------------------------------------------------------------------
-local buttons, menu, ev = {}, nil, nil
-local job                        -- { key, mode, manual, more } while a run is going
+local buttons, choosers, ev = {}, {}, nil
+local job                        -- { key, rules, manual, more } while a run is going
 local sending, timer = false, nil
-local UpdateButtons
+local UpdateButtons, RefreshPanel
 
 local function Stop(why, keepJob)
     sending = false
@@ -145,13 +162,13 @@ end
 
 local function SendOne()
     if not job then return end
-    local p, to = P(job.key), NameOf(job.key)
+    local p, r, to = P(job.key), job.rules, NameOf(job.key)
     if not to or IsMe(to) then return Stop("set a different character's name in /trikks first.") end
     if not (MailFrame and MailFrame:IsShown()) then return Stop() end
     ShowSendTab()
     if ClearSendMail then ClearSendMail() end
     -- bags may have moved since the last mail: look again every time
-    local queue = job.mode ~= "gold" and Collect(p) or {}
+    local queue = Collect(r)
     local n = 0
     while n < MAX and #queue > 0 do
         local spot = table.remove(queue, 1)
@@ -162,9 +179,9 @@ local function SendOne()
     end
     ClearCursor()
     local money = 0
-    if #queue == 0 and job.mode ~= "items" then       -- last mail: the gold goes along
+    if #queue == 0 then                                -- last mail: the gold goes along
         local postage = GetSendMailPrice and GetSendMailPrice() or n * POSTAGE_GUESS
-        money = math.max(0, SpareGold(p) - postage)
+        money = math.max(0, SpareGold(r) - postage)
         if money > 0 then SetSendMailMoney(money) end
     end
     if n == 0 and money == 0 then return Stop("nothing to send.") end
@@ -179,49 +196,117 @@ local function SendOne()
     UpdateButtons()
 end
 
-local function Start(key, mode)
+local function Start(key, rules)
     if sending then return end
-    if job and job.key == key and job.manual then job.mode = mode or job.mode
-    else job = { key = key, mode = mode or "all" } end
+    if not (job and job.key == key and job.manual) then job = { key = key, rules = rules } end
     SendOne()
 end
 
 ---------------------------------------------------------------------------
--- Mailbox buttons and their menu
+-- The send panel: every option with a live count from your bags, ticked
+-- from the profile; changes only count for this send unless saved
 ---------------------------------------------------------------------------
-local function HideMenu() if menu then menu:Hide() end end
+local panel, sel, selKey
+local rows = {}                  -- category key -> { cb, label, text }
 
-local function MenuItem(i, text, enabled, fn)
-    local b = menu.items[i]
-    if not b then
-        b = TT.Button(menu, "", 200, nil)
-        b:SetHeight(22)
-        b:SetPoint("TOPLEFT", 6, -6 - (i - 1) * 25)
-        menu.items[i] = b
+local function Counts()
+    local c = { list = 0, boe = 0 }
+    for _, s in ipairs(Mailable()) do
+        if InList(sel, s.itemID) then c.list = c.list + 1 end
+        local tkey, equipLoc, classID = TypeOf(s.itemID)
+        if tkey then c[tkey] = (c[tkey] or 0) + 1 end
+        if IsBoE(classID, equipLoc, s.quality, sel.boeQuality) then c.boe = c.boe + 1 end
     end
-    b:SetText(text)
-    b:SetEnabled(enabled)
-    b:SetScript("OnClick", function() HideMenu(); fn() end)
-    b:Show()
+    return c
 end
 
-local function OpenMenu(key, anchor)
-    if menu:IsShown() and menu.key == key then HideMenu(); return end
-    menu.key = key
-    local _, mails = Plan(key, "all")
-    local iItems, iMails = Plan(key, "items")
-    local _, _, gGold = Plan(key, "gold")
-    MenuItem(1, string.format("Send all  (%d %s)", mails, mails == 1 and "mail" or "mails"), mails > 0,
-        function() Start(key, "all") end)
-    MenuItem(2, string.format("Only items  (%d in %d %s)", iItems, iMails, iMails == 1 and "mail" or "mails"), iItems > 0,
-        function() Start(key, "items") end)
-    MenuItem(3, gGold > 0 and ("Only gold  (" .. Money(gGold) .. ")") or "Only gold  (none spare)", gGold > 0,
-        function() Start(key, "gold") end)
-    MenuItem(4, "Settings...", true, function() TT:ShowPage("BankAlt") end)
-    menu.title:SetText(P(key).label .. ": " .. (NameOf(key) or "?"))
-    menu:ClearAllPoints()
-    menu:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
-    menu:Show()
+RefreshPanel = function()
+    if not (panel and panel:IsShown() and sel) then return end
+    local c = Counts()
+    for key, row in pairs(rows) do
+        local n = c[key] or 0
+        row.cb.Text:SetText(row.text .. "  |cff888888(" .. n .. ")|r")
+        row.cb:SetChecked(key == "list" and sel.useList or (key ~= "list" and sel.types[key]) and true or false)
+    end
+    if not panel.goldBox:HasFocus() then panel.goldBox:SetText(sel.goldAmount > 0 and sel.goldAmount or "") end
+    panel.have:SetText("(you have " .. Money(GetMoney()) .. ")")
+    panel.boeQ.Refresh()
+    local items = #Collect(sel)
+    local mails = math.ceil(items / MAX)
+    local gold = SpareGold(sel, (items + 1) * POSTAGE_GUESS)
+    if gold > 0 and mails == 0 then mails = 1 end
+    local parts = {}
+    if items > 0 then parts[#parts + 1] = items .. (items == 1 and " stack" or " stacks") end
+    if gold > 0 then parts[#parts + 1] = Money(gold) end
+    panel.summary:SetText(#parts > 0 and (table.concat(parts, " + ") .. string.format("  in %d %s", mails, mails == 1 and "mail" or "mails"))
+        or "|cff888888Nothing ticked to send.|r")
+    panel.send:SetEnabled(mails > 0 and not sending)
+end
+
+local function OpenPanel(key)
+    if panel:IsShown() and selKey == key then panel:Hide(); return end
+    -- nothing ticked yet: you pick for this one send (the always-send list is the profile's)
+    selKey = key
+    sel = { items = P(key).items, useList = false, types = {}, boeQuality = P(key).boeQuality or 2, goldAmount = 0 }
+    panel.TitleText:SetText(("Send to " .. (NameOf(key) or "?") .. "  (" .. P(key).label .. ")"):upper())
+    panel:ClearAllPoints()
+    panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 6, 0)
+    panel:Show()
+    RefreshPanel()
+end
+
+local function BuildPanel()
+    panel = TT.Window("TrikksTweaksMailPanel", 380, 330, "Send")
+    panel:SetScript("OnShow", function() C_Timer.After(0, RefreshPanel) end)
+    local function Row(key, text, x, y)
+        local cb = TT.Check(panel, text, function(v)
+            if key == "list" then sel.useList = v else sel.types[key] = v or nil end
+            RefreshPanel()
+        end)
+        cb:SetPoint("TOPLEFT", x, y)
+        rows[key] = { cb = cb, text = text }
+    end
+    -- two columns: the always-send list, every item type, BoE gear
+    local cats = { { "list", "Always-send list" } }
+    for _, t in ipairs(TYPES) do cats[#cats + 1] = { t[1], t[2] } end
+    cats[#cats + 1] = { "boe", "BoE gear" }
+    local perCol = math.ceil(#cats / 2)
+    for i, c in ipairs(cats) do
+        local col, row = math.floor((i - 1) / perCol), (i - 1) % perCol
+        Row(c[1], c[2], 16 + col * 180, -40 - row * 22)
+    end
+    local y = -40 - perCol * 22 - 6
+    local ql = TT.Label(panel, "BoE quality:", "GameFontHighlightSmall")
+    ql:SetPoint("TOPLEFT", 16, y - 4)
+    local function Q(q, text)
+        local col = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+        return { q, (col and col.hex or "") .. text .. "|r" }
+    end
+    panel.boeQ = TT.Cycle(panel, 150, { Q(2, "Uncommon and up"), Q(3, "Rare and up"), Q(4, "Epic and up") },
+        function() return sel and sel.boeQuality or 2 end, function(v) sel.boeQuality = v; RefreshPanel() end)
+    panel.boeQ:SetPoint("TOPLEFT", 100, y)
+    y = y - 32
+    local gt = TT.Label(panel, "Gold to send:", "GameFontHighlight")
+    gt:SetPoint("TOPLEFT", 16, y - 4)
+    panel.goldBox = TT.EditBox(panel, 80, 22)
+    panel.goldBox:SetPoint("TOPLEFT", 110, y)
+    panel.goldBox:SetNumeric(true)
+    panel.goldBox:SetMaxLetters(7)
+    panel.goldBox:SetScript("OnTextChanged", function(box, user)
+        if user then sel.goldAmount = tonumber(box:GetText()) or 0; RefreshPanel() end
+    end)
+    panel.goldBox:SetScript("OnEnterPressed", function(box) box:ClearFocus() end)
+    local gl = TT.Label(panel, "gold", "GameFontHighlight")
+    gl:SetPoint("LEFT", panel.goldBox, "RIGHT", 6, 0)
+    panel.have = TT.Label(panel, "", "GameFontDisableSmall")
+    panel.have:SetPoint("LEFT", gl, "RIGHT", 10, 0)
+    y = y - 34
+    panel.summary = TT.Label(panel, "", "GameFontHighlight")
+    panel.summary:SetPoint("TOPLEFT", 16, y)
+    panel.send = TT.Button(panel, "Send", 120, function() local r = sel; panel:Hide(); Start(selKey, r) end)
+    panel.send:SetPoint("BOTTOMLEFT", 16, 14)
+    local set = TT.Button(panel, "Settings...", 100, function() TT:ShowPage("BankAlt") end)
+    set:SetPoint("LEFT", panel.send, "RIGHT", 6, 0)
 end
 
 UpdateButtons = function()
@@ -232,10 +317,13 @@ UpdateButtons = function()
         local to = NameOf(key)
         local show = open and to and not IsMe(to) and not HiddenHere(key) and true or false
         b:SetShown(show)
+        choosers[key]:SetShown(show)
         if show then
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", MailFrame, "BOTTOMLEFT", x, -4)
-            x = x + b:GetWidth() + 6
+            choosers[key]:ClearAllPoints()
+            choosers[key]:SetPoint("LEFT", b, "RIGHT", 2, 0)
+            x = x + b:GetWidth() + choosers[key]:GetWidth() + 10
             local label = P(key).label .. ": " .. to
             if sending and job and job.key == key then
                 b:SetText("Sending..."); b:Disable()
@@ -246,7 +334,8 @@ UpdateButtons = function()
             end
         end
     end
-    if not open then HideMenu() end
+    if not open and panel then panel:Hide() end
+    RefreshPanel()
 end
 
 local function OnEvent(_, event, _, a2)
@@ -278,12 +367,8 @@ local function OnEvent(_, event, _, a2)
             if ClearSendMail then ClearSendMail() end
             Stop("the game wants a click for each mail: click the button again for the next one.", true)
         end
-    elseif event == "GLOBAL_MOUSE_DOWN" then
-        if menu and menu:IsShown() and not menu:IsMouseOver() then
-            local overButton = false
-            for _, b in pairs(buttons) do if b:IsMouseOver() then overButton = true end end
-            if not overButton then HideMenu() end
-        end
+    elseif event == "BAG_UPDATE_DELAYED" or event == "PLAYER_MONEY" then
+        RefreshPanel()
     end
 end
 
@@ -291,27 +376,39 @@ function M:Setup()
     for _, key in ipairs(KEYS) do
         local b = TT.Button(UIParent, "", 170, nil)
         b:SetHeight(24)
-        b:SetScript("OnClick", function(btn)
-            if job and job.key == key and job.manual and not sending then Start(key) else OpenMenu(key, btn) end
+        -- left-click: quick send (everything as set in /trikks); right-click: choose
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        b:SetScript("OnClick", function(_, mouse)
+            if mouse == "RightButton" then OpenPanel(key); return end
+            if job and job.key == key and job.manual and not sending then Start(key)
+            else Start(key, RulesFrom(P(key))) end
         end)
+        b:HookScript("OnEnter", function(btn)
+            local r = RulesFrom(P(key))
+            local items = #Collect(r)
+            local gold = SpareGold(r, (items + 1) * POSTAGE_GUESS)
+            GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Quick send to " .. (NameOf(key) or "?"), 1, 1, 1)
+            GameTooltip:AddLine(items .. (items == 1 and " stack" or " stacks") .. (gold > 0 and (" + " .. Money(gold)) or ""), 0.8, 0.8, 0.8)
+            GameTooltip:AddLine("Everything set in /trikks > Mail to Alts.", 0.6, 0.6, 0.6)
+            GameTooltip:AddLine("Right-click or ...: choose what to send.", 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end)
+        b:HookScript("OnLeave", GameTooltip_Hide)
         b:Hide()
         buttons[key] = b
+        local c = TT.Button(UIParent, "...", 26, function() OpenPanel(key) end)
+        c:SetHeight(24)
+        c:Hide()
+        choosers[key] = c
     end
-    menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    menu:SetSize(212, 6 + 4 * 25 + 20)
-    menu:SetFrameStrata("DIALOG")
-    TT.Flat(menu, C.bg, C.border)
-    menu.items = {}
-    menu.title = TT.Label(menu, "", "GameFontNormalSmall")
-    menu.title:SetPoint("BOTTOMLEFT", 8, 6)
-    menu.title:SetTextColor(unpack(C.dim))
-    menu:Hide()
+    BuildPanel()
     ev = CreateFrame("Frame")
     ev:SetScript("OnEvent", OnEvent)
 end
 
 local EVENTS = { "MAIL_SHOW", "MAIL_CLOSED", "MAIL_SEND_SUCCESS", "MAIL_FAILED",
-                 "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN", "GLOBAL_MOUSE_DOWN" }
+                 "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN", "BAG_UPDATE_DELAYED", "PLAYER_MONEY" }
 function M:OnLoad()
     -- the first version had one recipient: move it into the "Bank alt" profile
     local db = M.db
@@ -325,7 +422,9 @@ end
 function M:OnEnable()
     for _, e in ipairs(EVENTS) do pcall(ev.RegisterEvent, ev, e) end
     if MailFrame then
-        for _, b in pairs(buttons) do b:SetParent(MailFrame); b:SetFrameStrata(MailFrame:GetFrameStrata()) end
+        for _, list in ipairs({ buttons, choosers }) do
+            for _, b in pairs(list) do b:SetParent(MailFrame); b:SetFrameStrata(MailFrame:GetFrameStrata()) end
+        end
     end
     UpdateButtons()
 end
@@ -333,7 +432,8 @@ function M:OnDisable()
     for _, e in ipairs(EVENTS) do pcall(ev.UnregisterEvent, ev, e) end
     if sending then Stop() end
     for _, b in pairs(buttons) do b:Hide() end
-    HideMenu()
+    for _, b in pairs(choosers) do b:Hide() end
+    if panel then panel:Hide() end
 end
 
 ---------------------------------------------------------------------------
@@ -462,10 +562,11 @@ function M:BuildSettings(body, page)
     drop:SetScript("OnClick", AddFromCursor)
     y = y + 168
     local help = TT.Label(body,
-        "At a mailbox there is a button per character under the mail window (not for the one\n" ..
-        "you're playing). It opens a menu: send all, only items, only gold. 12 items per mail,\n" ..
-        "one mail after another, gold in the last one. Soulbound, locked and quest items are\n" ..
-        "never sent. If the game wants a click per mail, the button says \"next mail\".", "GameFontDisableSmall")
+        "At a mailbox: a button per character under the mail window. Click = quick send of\n" ..
+        "everything set here. \"...\" (or right-click) = pick item types and type an amount of gold\n" ..
+        "for this one send. 12 items per mail, one mail after another, gold in the last one.\n" ..
+        "Soulbound, locked and quest items are never sent. If the game wants a click per\n" ..
+        "mail, the button says \"next mail\".", "GameFontDisableSmall")
     help:SetPoint("TOPLEFT", 0, -y)
 
     page.OnPageShow = Refresh

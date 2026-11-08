@@ -381,10 +381,19 @@ function M:BuildSettings(body, page)
     local gcb = TT.Check(body, "Send gold, keep this much on the character:", function(v) P(shown).gold = v end)
     gcb:SetPoint("TOPLEFT", 2, -y)
     refreshers[#refreshers + 1] = function() gcb:SetChecked(P(shown).gold) end
-    local keep = TT.Stepper(body, "Keep (gold)", function() return P(shown).keepGold end,
-        function(v) P(shown).keepGold = v end, 0, 100000, 10)
-    keep:SetPoint("TOPLEFT", 330, -y + 4)
-    refreshers[#refreshers + 1] = keep.Refresh
+    -- type any amount (whole gold); empty counts as 0
+    local keep = TT.EditBox(body, 80, 22)
+    keep:SetPoint("TOPLEFT", 330, -y + 2)
+    keep:SetNumeric(true)
+    keep:SetMaxLetters(7)
+    keep:SetScript("OnTextChanged", function(box, user)
+        if user then P(shown).keepGold = tonumber(box:GetText()) or 0 end
+    end)
+    keep:SetScript("OnEnterPressed", function(box) box:ClearFocus() end)
+    keep:SetScript("OnEditFocusLost", function(box) box:SetText(P(shown).keepGold or 0) end)
+    local unit = TT.Label(body, "gold", "GameFontHighlight")
+    unit:SetPoint("LEFT", keep, "RIGHT", 6, 0)
+    refreshers[#refreshers + 1] = function() keep:SetText(P(shown).keepGold or 0) end
     y = y + 34
 
     Head("Always send these items")

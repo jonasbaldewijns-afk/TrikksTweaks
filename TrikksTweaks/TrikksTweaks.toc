@@ -1,4 +1,4 @@
-## Interface: 16001, 120105
+## Interface: 16001
 ## Title: Trikks Tweaks
 ## Notes: A bundle of opt-in UI and quality-of-life modules. /trikks
 ## Version: 1.2

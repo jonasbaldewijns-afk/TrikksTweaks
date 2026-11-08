@@ -43,8 +43,6 @@ for _, b in ipairs({ "Kings", "Might", "Wisdom", "Salvation", "Light", "Sanctuar
     BLESSINGS[#BLESSINGS + 1] = "Blessing of " .. b
     BLESSINGS[#BLESSINGS + 1] = "Greater Blessing of " .. b
 end
-local POISONS = { "Instant Poison", "Deadly Poison", "Wound Poison", "Crippling Poison", "Mind-numbing Poison",
-                  "Amplifying Poison", "Numbing Poison", "Atrophic Poison" }
 
 local CLASS_BUFFS = {
     MAGE = {
@@ -86,12 +84,7 @@ local CLASS_BUFFS = {
         E("aspect", "Aspect", { "Aspect of the Hawk", "Aspect of the Dragonhawk", "Aspect of the Monkey",
           "Aspect of the Cheetah", "Aspect of the Pack", "Aspect of the Wild", "Aspect of the Viper" }, nil, { off = true }),
     },
-    ROGUE = {
-        -- classic: poison = weapon enchant from an item; newer clients: poison = a buff from a spell.
-        -- One reminder per weapon (the off-hand one only with a weapon in the off hand).
-        E("poisonMH", "Main-hand poison", POISONS, POISONS, { weapon = 16, always = true, items = true }),
-        E("poisonOH", "Off-hand poison", POISONS, POISONS, { weapon = 17, always = true, items = true }),
-    },
+    -- rogue poisons: their own module (Poison Reminder)
     EVOKER = {
         E("bronze", "Blessing of the Bronze", { "Blessing of the Bronze" }, nil, { group = true }),
     },

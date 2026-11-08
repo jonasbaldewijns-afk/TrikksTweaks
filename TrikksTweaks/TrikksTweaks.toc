@@ -44,6 +44,7 @@ Modules\DeleteJunk.lua
 Modules\AuctionKeys.lua
 Modules\BankAlt.lua
 Modules\BuffReminders.lua
+Modules\PoisonReminder.lua
 Modules\Teleports.lua
 Modules\DialogKeys.lua
 # System

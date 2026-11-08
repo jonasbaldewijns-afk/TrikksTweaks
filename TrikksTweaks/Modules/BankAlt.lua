@@ -17,7 +17,7 @@ local IsSecret = TT.IsSecret
 
 local function Profile(label)
     return { name = "", label = label, subject = "", items = {}, types = {}, gold = false, keepGold = 50,
-             hideOn = {} }           -- characters ("Name-Realm") that don't show this button
+             hideOn = {}, boeQuality = 2 }    -- BoE gear: this quality and better (2 = uncommon)           -- characters ("Name-Realm") that don't show this button
 end
 local M = TT:RegisterModule("BankAlt", {
     title = "Mail to Alts",
@@ -65,10 +65,19 @@ local function IsMe(name)
     return name == me or name:match("^(.-)%-") == me
 end
 
-local function Wanted(p, itemID)
+-- BoE gear: a weapon or armour piece that isn't bound yet (bound items never
+-- get this far), of at least the chosen quality
+local WEAPON = Enum and Enum.ItemClass and Enum.ItemClass.Weapon or 2
+local ARMOR = Enum and Enum.ItemClass and Enum.ItemClass.Armor or 4
+local function Wanted(p, itemID, quality)
     for _, id in ipairs(p.items) do if id == itemID then return true end end
-    local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+    local _, _, _, equipLoc, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
     if not classID then return false end
+    if p.types.boe and (classID == WEAPON or classID == ARMOR) and equipLoc and equipLoc ~= ""
+       and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE" and quality and not IsSecret(quality)
+       and quality >= (p.boeQuality or 2) then
+        return true
+    end
     for _, t in ipairs(TYPES) do
         if p.types[t[1]] and classID == t[3] and (t[4] == nil or subclassID == t[4]) then return true end
     end
@@ -83,7 +92,7 @@ local function Collect(p)
         for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info and info.itemID and not IsSecret(info.itemID) and not info.isBound and not info.isLocked
-               and Wanted(p, info.itemID) then
+               and Wanted(p, info.itemID, info.quality) then
                 local q = C_Container.GetContainerItemQuestInfo and C_Container.GetContainerItemQuestInfo(bag, slot)
                 if not (q and (q.isQuestItem or q.questID)) then list[#list + 1] = { bag, slot } end
             end
@@ -388,7 +397,19 @@ function M:BuildSettings(body, page)
         refreshers[#refreshers + 1] = function() cb:SetChecked(P(shown).types[t[1]] and true or false) end
         if col == 2 or i == #TYPES then y = y + 24 end
     end
-    y = y + 6
+    -- BoE gear, with its minimum quality
+    local boe = TT.Check(body, "BoE gear (not bound yet)", function(v) P(shown).types.boe = v or nil end)
+    boe:SetPoint("TOPLEFT", 2, -y)
+    refreshers[#refreshers + 1] = function() boe:SetChecked(P(shown).types.boe and true or false) end
+    local function Q(q, text)
+        local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+        return { q, (c and c.hex or "") .. text .. "|r" }
+    end
+    local boeQ = TT.Cycle(body, 150, { Q(2, "Uncommon and up"), Q(3, "Rare and up"), Q(4, "Epic and up") },
+        function() return P(shown).boeQuality or 2 end, function(v) P(shown).boeQuality = v end)
+    boeQ:SetPoint("TOPLEFT", 230, -y + 2)
+    refreshers[#refreshers + 1] = boeQ.Refresh
+    y = y + 30
 
     Head("Gold")
     local gcb = TT.Check(body, "Send gold, keep this much on the character:", function(v) P(shown).gold = v end)

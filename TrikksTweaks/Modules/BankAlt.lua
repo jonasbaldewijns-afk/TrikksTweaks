@@ -277,8 +277,8 @@ function M:Setup()
     for _, key in ipairs(KEYS) do
         local b = TT.Button(UIParent, "", 170, nil)
         b:SetHeight(24)
-        b:SetScript("OnClick", function(self)
-            if job and job.key == key and job.manual and not sending then Start(key) else OpenMenu(key, self) end
+        b:SetScript("OnClick", function(btn)
+            if job and job.key == key and job.manual and not sending then Start(key) else OpenMenu(key, btn) end
         end)
         b:Hide()
         buttons[key] = b

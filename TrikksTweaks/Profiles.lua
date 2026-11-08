@@ -45,8 +45,6 @@ local PARTS = {
           TrikksReskinDB = TrikksReskinDB or {}
           TrikksReskinDB.modules = Merge(TrikksReskinDB.modules or {}, v)
       end },
-    { key = "auras",   label = "Trikks Auras",          get = function() return TrikksAurasDB end,
-      set = function(v) TrikksAurasDB = v end },
 }
 
 local function Export(choice)
@@ -96,7 +94,7 @@ local win
 local function Build()
     win = TT.Window("TrikksTweaksProfiles", 560, 420, "Export / import", TT.hub)
     win:SetFrameStrata("FULLSCREEN_DIALOG")
-    local choice = { tweaks = true, reskins = true, auras = true, setups = false }
+    local choice = { tweaks = true, reskins = true, setups = false }
     local y = -36
     local checks = {}
     for _, p in ipairs(PARTS) do

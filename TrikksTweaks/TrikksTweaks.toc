@@ -9,6 +9,7 @@
 ## AddonCompartmentFuncOnLeave: TrikksTweaks_OnAddonCompartmentLeave
 
 Libs\LibStub\LibStub.lua
+Libs\LibEditMode\embed.xml
 
 Core.lua
 Inspector.lua
@@ -19,6 +20,7 @@ Modules\ClassPortraits.lua
 Modules\CursorRing.lua
 Modules\PartyPosition.lua
 Modules\SoloParty.lua
+Modules\CDMCenter.lua
 Modules\DarkMode.lua
 Modules\BarFade.lua
 Modules\Minimap.lua
@@ -36,6 +38,7 @@ Modules\Chat.lua
 Modules\SpellID.lua
 Modules\SmallHelpers.lua
 Modules\DeleteJunk.lua
+Modules\BuffReminders.lua
 Modules\Teleports.lua
 Modules\DialogKeys.lua
 # System

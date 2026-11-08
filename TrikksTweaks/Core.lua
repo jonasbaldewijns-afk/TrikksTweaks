@@ -753,7 +753,7 @@ end)
 -- grows over 10 seconds. Growth = temporary tables / strings made and thrown
 -- away (garbage), which is what eventually causes collector stutters. The
 -- CPU time per frame is shown too when the client has the addon profiler.
-local PERF_ADDONS = { "TrikksTweaks", "TrikksReskins", "TrikksAuras" }
+local PERF_ADDONS = { "TrikksTweaks", "TrikksReskins" }
 local function Loaded(name)
     if C_AddOns and C_AddOns.IsAddOnLoaded then return C_AddOns.IsAddOnLoaded(name) end
     return IsAddOnLoaded and IsAddOnLoaded(name)

@@ -85,15 +85,21 @@ end
 -- History between logins
 ---------------------------------------------------------------------------
 local charKey = UnitName("player") .. "-" .. (GetRealmName() or "")
-local live, restoring = {}, false
+-- Every line added to a chat tab is kept here as plain text (up to KEEP per
+-- tab): the copy window reads it, and the last few are saved at logout for
+-- the history. Lines the game hands over as "secret" can't be kept: they are
+-- only counted, so the copy window can say they're missing.
+local live, hiddenLines, restoring = {}, {}, false
+local KEEP = 300
 
 local function Remember(index, text, r, g, b)
-    if restoring or not (M.enabled and M.db.history) then return end
-    if type(text) ~= "string" or IsSecret(text) or text == "" then return end
+    if restoring or not M.enabled then return end
+    if IsSecret(text) then hiddenLines[index] = (hiddenLines[index] or 0) + 1; return end
+    if type(text) ~= "string" or text == "" then return end
     local list = live[index]
     if not list then list = {}; live[index] = list end
     list[#list + 1] = { text, r or 1, g or 1, b or 1 }
-    if #list > M.db.lines then table.remove(list, 1) end
+    if #list > KEEP then table.remove(list, 1) end
 end
 
 local function HookFrames()
@@ -152,13 +158,25 @@ end
 local function OpenCopy()
     if not copyWin then MakeCopyWindow() end
     local cf = SELECTED_CHAT_FRAME or DEFAULT_CHAT_FRAME
+    local index
+    for i, f in pairs(Frames()) do if f == cf then index = i end end
     local out = {}
-    if cf.GetNumMessages and cf.GetMessageInfo then
+    -- 1. our own record of this tab (plain text, kept as lines were added)
+    for _, line in ipairs(index and live[index] or {}) do out[#out + 1] = Plain(line[1]) end
+    -- 2. nothing recorded (yet): try Blizzard's own buffer
+    if #out == 0 and cf.GetNumMessages and cf.GetMessageInfo then
         for i = 1, cf:GetNumMessages() do
             local text = cf:GetMessageInfo(i)
+            if type(text) == "table" then text = text.message or text.text end
             if type(text) == "string" and not IsSecret(text) then out[#out + 1] = Plain(text) end
         end
     end
+    local hiddenCount = index and hiddenLines[index] or 0
+    if hiddenCount > 0 then
+        out[#out + 1] = string.format("(%d %s in this tab hidden by the game: those can't be copied)",
+            hiddenCount, hiddenCount == 1 and "line was" or "lines were")
+    end
+    if #out == 0 then out[1] = "(nothing to copy yet: lines show up here from your next message on)" end
     copyEdit:SetText(table.concat(out, "\n"))
     copyWin:Show()
     copyEdit:SetFocus()

@@ -9,9 +9,9 @@ Copy `TrikksTweaks` into `World of Warcraft\_forever_\Interface\AddOns\`.
 
 ## Modules
 
-**Interface** – Class Portraits, Party Position, Dark Mode, Mouseover Bars, Minimap (square map, wheel zoom, stats inside the map, movable buttons, button bin, zone bar removal), Clutter Text, Tooltips, Hide Blizzard Frames, Character Extras
+**Interface** – Class Portraits, Cursor Ring, Party Position, Dark Mode, Mouseover Bars, Minimap (square map, wheel zoom, stats inside the map, movable buttons, button bin, zone bar removal), Clutter Text, Tooltips, Hide Blizzard Frames, Character Extras
 
-**Quality of Life** – Automation, Dialog Keys (space / 1-9 for gossip and quests), Chat (history, `/copychat`, class colours, filters), Social, Consumable Macros, Vendor & Bags, Delete Junk (Backspace destroys the cheapest grey item), Movable Windows, IDs & Links, Small Helpers
+**Quality of Life** – Automation, Dialog Keys (space / 1-9 for gossip and quests), Chat (history, `/copychat`, class colours, filters), Social, Consumable Macros, Vendor & Bags, Delete Junk (Backspace destroys the cheapest grey item), Teleports (next to the Esc menu, `/tp`), Movable Windows, IDs & Links, Small Helpers
 
 **System** – Camera & Visuals, Sound Muting
 

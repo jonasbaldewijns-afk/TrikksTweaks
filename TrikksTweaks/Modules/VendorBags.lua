@@ -1,12 +1,13 @@
 -- Module: Vendor & Bags
 -- Sell prices in item tooltips, a free-slots count on the backpack button,
--- and "Nude" / "No weapons" buttons in the dressing room.
+-- "Nude" / "No weapons" buttons in the dressing room, and the item level on
+-- gear in your bags.
 local _, TT = ...
 local M = TT:RegisterModule("VendorBags", {
     title = "Vendor & Bags",
     category = "Quality of Life",
     desc = "Sell prices in item tooltips, free bag slots on the backpack, nude / no-weapons buttons in the dressing room.",
-    defaults = { sellPrice = true, freeSlots = true, dressingRoom = true },
+    defaults = { sellPrice = true, freeSlots = true, dressingRoom = true, bagIlvl = true },
 })
 
 ---------------------------------------------------------------------------
@@ -41,6 +42,52 @@ TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tool
     end
     tooltip:Show()
 end)
+
+---------------------------------------------------------------------------
+-- Item level on gear in your bags
+---------------------------------------------------------------------------
+local function BagButtonIlvl(b)
+    if not b.ttIlvl then
+        b.ttIlvl = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        b.ttIlvl:SetPoint("TOPLEFT", 2, -2)
+    end
+    local text = ""
+    if M.enabled and M.db.bagIlvl and b.GetBagID then
+        local ok, bag = pcall(b.GetBagID, b)
+        local info = ok and bag and C_Container.GetContainerItemInfo(bag, b:GetID())
+        local link = info and info.hyperlink
+        if link and not TT.IsSecret(link) then
+            -- only weapons (class 2) and armour (class 4)
+            local classID = select(6, C_Item.GetItemInfoInstant(link))
+            if classID == 2 or classID == 4 then
+                local f = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
+                local lvl = f and f(link)
+                if lvl and not TT.IsSecret(lvl) and lvl > 1 then
+                    text = lvl
+                    local c = info.quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[info.quality]
+                    if c then b.ttIlvl:SetTextColor(c.r, c.g, c.b) else b.ttIlvl:SetTextColor(1, 1, 1) end
+                end
+            end
+        end
+    end
+    b.ttIlvl:SetText(text)
+end
+local function BagIlvl(frame)
+    if type(frame.EnumerateValidItems) ~= "function" then return end
+    for _, b in frame:EnumerateValidItems() do BagButtonIlvl(b) end
+end
+local bagFrames = { "ContainerFrameCombinedBags" }
+for i = 1, 13 do bagFrames[#bagFrames + 1] = "ContainerFrame" .. i end
+for _, n in ipairs(bagFrames) do
+    local f = _G[n]
+    if f and type(f.UpdateItems) == "function" then hooksecurefunc(f, "UpdateItems", BagIlvl) end
+end
+local function RefreshBags()
+    for _, n in ipairs(bagFrames) do
+        local f = _G[n]
+        if f and f:IsShown() then BagIlvl(f) end
+    end
+end
 
 ---------------------------------------------------------------------------
 -- Free bag slots on the backpack button
@@ -127,5 +174,6 @@ function M:BuildSettings(body, page)
     Check("sellPrice", "Sell price in item tooltips (whole stack for bag items)")
     Check("freeSlots", "Free bag slots on the backpack button", UpdateFree)
     Check("dressingRoom", "\"Nude\" and \"No weapons\" buttons in the dressing room", ApplyDress)
+    Check("bagIlvl", "Item level on weapons and armour in your bags", RefreshBags)
     page.OnPageShow = function() for key, cb in pairs(checks) do cb:SetChecked(db[key]) end end
 end

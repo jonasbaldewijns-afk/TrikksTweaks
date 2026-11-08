@@ -5,8 +5,9 @@ local _, TT = ...
 local M = TT:RegisterModule("SpellID", {
     title = "IDs & Links",
     category = "Quality of Life",
-    desc = "Spell IDs on tooltips (hold a key) and copyable Wowhead links for quests.",
-    defaults = { modifier = "CTRL", copyEnabled = true, copyKey = "C", questLinks = true },
+    desc = "Spell, item, NPC, quest, currency and icon IDs on tooltips (hold a key) and Wowhead links for quests.",
+    defaults = { modifier = "CTRL", copyEnabled = true, copyKey = "C", questLinks = true,
+                 itemIDs = true, npcIDs = true, questIDs = true, currencyIDs = true, iconIDs = true },
 })
 
 local currentID
@@ -44,6 +45,66 @@ local function AddSpellID(tooltip, data)
 end
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell, AddSpellID)
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.UnitAura, AddSpellID)
+
+-- 1.4: more IDs (each can be switched off). Shown with the same key as spell IDs.
+local function IDLine(tooltip, label, id)
+    tooltip:AddDoubleLine(label, tostring(id), 0.5, 0.8, 1, 1, 1, 1)
+end
+local function IconLine(tooltip, icon)
+    if M.db.iconIDs and icon and not TT.IsSecret(icon) then IDLine(tooltip, "Icon ID", icon) end
+end
+local function Usable(tooltip, data)
+    return M.enabled and (tooltip == GameTooltip or tooltip == ItemRefTooltip
+        or tooltip == ShoppingTooltip1 or tooltip == ShoppingTooltip2)
+        and data and HoverModDown()
+end
+local T = Enum.TooltipDataType
+-- items: item ID + icon ID
+TooltipDataProcessor.AddTooltipPostCall(T.Item, function(tooltip, data)
+    if not (Usable(tooltip, data) and M.db.itemIDs) or not data.id or TT.IsSecret(data.id) then return end
+    tooltip:AddLine(" ")
+    IDLine(tooltip, "Item ID", data.id)
+    IconLine(tooltip, C_Item.GetItemIconByID and C_Item.GetItemIconByID(data.id))
+    tooltip:Show()
+end)
+-- spells also get their icon ID (spell ID itself comes from AddSpellID)
+TooltipDataProcessor.AddTooltipPostCall(T.Spell, function(tooltip, data)
+    if not (Usable(tooltip, data) and M.db.iconIDs) or not data.id or TT.IsSecret(data.id) then return end
+    local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(data.id)
+    if icon then IconLine(tooltip, icon); tooltip:Show() end
+end)
+-- NPCs: the NPC ID is part of the unit's GUID ("Creature-0-...-<npcID>-...")
+TooltipDataProcessor.AddTooltipPostCall(T.Unit, function(tooltip, data)
+    if not (Usable(tooltip, data) and M.db.npcIDs) or not data.guid or TT.IsSecret(data.guid) then return end
+    local kind, _, _, _, _, npcID = strsplit("-", data.guid)
+    if (kind == "Creature" or kind == "Vehicle") and npcID then
+        tooltip:AddLine(" ")
+        IDLine(tooltip, "NPC ID", npcID)
+        tooltip:Show()
+    end
+end)
+if T.Currency then
+    TooltipDataProcessor.AddTooltipPostCall(T.Currency, function(tooltip, data)
+        if not (Usable(tooltip, data) and M.db.currencyIDs) or not data.id or TT.IsSecret(data.id) then return end
+        tooltip:AddLine(" ")
+        IDLine(tooltip, "Currency ID", data.id)
+        tooltip:Show()
+    end)
+end
+if T.Quest then
+    TooltipDataProcessor.AddTooltipPostCall(T.Quest, function(tooltip, data)
+        if not (Usable(tooltip, data) and M.db.questIDs) or not data.id or TT.IsSecret(data.id) then return end
+        tooltip:AddLine(" ")
+        IDLine(tooltip, "Quest ID", data.id)
+        tooltip:Show()
+    end)
+end
+-- quest links in chat (and some quest lists) open as a "quest:<id>" hyperlink
+hooksecurefunc(ItemRefTooltip, "SetHyperlink", function(tooltip, link)
+    if not (M.enabled and M.db.questIDs and type(link) == "string") or TT.IsSecret(link) then return end
+    local id = link:match("^quest:(%d+)")
+    if id and HoverModDown() then IDLine(tooltip, "Quest ID", id); tooltip:Show() end
+end)
 GameTooltip:HookScript("OnHide", function() currentID = nil end)
 
 -- Copy box: addons can't reach the clipboard, so we pre-select the text
@@ -211,7 +272,20 @@ function M:BuildSettings(body, page)
     local ql = TT.Check(body, "Wowhead links for quests (right-click a quest, the Wowhead button\n on quest windows, or /wh <quest name>)", function(v) M.db.questLinks = v end)
     ql:SetPoint("TOPLEFT", kl, "BOTTOMLEFT", -4, -24)
 
+    -- which IDs to show
+    local idChecks = {}
+    local idList = { { "itemIDs", "Item IDs" }, { "npcIDs", "NPC IDs" }, { "questIDs", "Quest IDs" },
+                     { "currencyIDs", "Currency IDs" }, { "iconIDs", "Icon IDs (items and spells)" } }
+    local il = TT.Label(body, "Also show (with the same key):")
+    il:SetPoint("TOPLEFT", ql, "BOTTOMLEFT", 4, -36)
+    for i, c in ipairs(idList) do
+        local cb = TT.Check(body, c[2], function(v) M.db[c[1]] = v end)
+        cb:SetPoint("TOPLEFT", il, "BOTTOMLEFT", -2 + ((i - 1) % 2) * 280, -6 - math.floor((i - 1) / 2) * 24)
+        idChecks[c[1]] = cb
+    end
+
     page.OnPageShow = function()
         Refresh(); copyCB:SetChecked(M.db.copyEnabled); RefreshKey(); ql:SetChecked(M.db.questLinks)
+        for k, cb in pairs(idChecks) do cb:SetChecked(M.db[k]) end
     end
 end

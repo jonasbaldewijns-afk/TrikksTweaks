@@ -1,40 +1,62 @@
 -- Module: Mouseover Bars
--- Fades the micro menu (character/spellbook/... buttons) and the bag bar out,
--- and fades them back in while your mouse is over them.
+-- Fades bars out and fades them back in while your mouse is over them: the
+-- micro menu, the bag bar, any of the action bars, and the player / target
+-- frames. Action bars are protected frames, but changing how see-through a
+-- frame is (SetAlpha) is allowed even in combat, so this works everywhere.
 local _, TT = ...
 local M = TT:RegisterModule("BarFade", {
     title = "Mouseover Bars",
     category = "Interface",
-    desc = "Hides the micro menu and bag bar until you move your mouse over them.",
-    defaults = { micro = true, bags = true, link = true, alpha = 0, speed = 8 },
+    desc = "Hides the micro menu, bag bar, action bars or player / target frames until you move your mouse over them.",
+    defaults = {
+        micro = true, bags = true, link = true, alpha = 0, speed = 8,
+        -- 1.4: action bars and unit frames (all off until you tick them)
+        main = false, bar2 = false, bar3 = false, bar4 = false, bar5 = false, bar6 = false, bar7 = false, bar8 = false,
+        stance = false, pet = false, player = false, target = false,
+        linkBars = false, combatShow = true,
+    },
 })
 
--- the frames that make up each bar (bag slots can live in their own cluster)
+-- key -> label, the frames, and the group it belongs to ("menu" bars link
+-- with each other, "action" bars link when linkBars is on)
 local BARS = {
-    micro = function() return { MicroMenuContainer or MicroMenu } end,
-    bags  = function() return { BagsBar, BagSlotCluster } end,
+    { "micro",  "Micro menu (character, spellbook, ... buttons)", function() return { MicroMenuContainer or MicroMenu } end, "menu" },
+    { "bags",   "Bag bar",            function() return { BagsBar, BagSlotCluster } end, "menu" },
+    { "main",   "Action bar 1",       function() return { MainActionBar or MainMenuBar } end, "action" },
+    { "bar2",   "Action bar 2",       function() return { MultiBarBottomLeft } end, "action" },
+    { "bar3",   "Action bar 3",       function() return { MultiBarBottomRight } end, "action" },
+    { "bar4",   "Action bar 4",       function() return { MultiBarRight } end, "action" },
+    { "bar5",   "Action bar 5",       function() return { MultiBarLeft } end, "action" },
+    { "bar6",   "Action bar 6",       function() return { MultiBar5 } end, "action" },
+    { "bar7",   "Action bar 7",       function() return { MultiBar6 } end, "action" },
+    { "bar8",   "Action bar 8",       function() return { MultiBar7 } end, "action" },
+    { "stance", "Stance bar",         function() return { StanceBar } end, "action" },
+    { "pet",    "Pet bar",            function() return { PetActionBar } end, "action" },
+    { "player", "Player frame",       function() return { PlayerFrame } end, "unit" },
+    { "target", "Target frame",       function() return { TargetFrame } end, "unit" },
 }
-local current = { micro = 1, bags = 1 }
+local current = {}
+for _, b in ipairs(BARS) do current[b[1]] = 1 end
 
-local function Frames(key)
+local function Frames(bar)
     local list = {}
-    for _, f in ipairs(BARS[key]()) do if f then list[#list + 1] = f end end
+    for _, f in ipairs(bar[3]()) do if f then list[#list + 1] = f end end
     return list
 end
 
 -- Mouse anywhere inside the bar's rectangle (+6px so gaps don't flicker)?
 -- One check on the whole bar instead of OnEnter on every button, because a
 -- parent frame doesn't get OnEnter when the mouse is on one of its buttons.
-local function Hovered(key)
-    for _, f in ipairs(Frames(key)) do
+local function Hovered(bar)
+    for _, f in ipairs(Frames(bar)) do
         if f:IsVisible() and f:IsMouseOver(6, -6, -6, 6) then return true end
     end
     return false
 end
 
-local function SetBarAlpha(key, a)
-    current[key] = a
-    for _, f in ipairs(Frames(key)) do f:SetAlpha(a) end
+local function SetBarAlpha(bar, a)
+    current[bar[1]] = a
+    for _, f in ipairs(Frames(bar)) do f:SetAlpha(a) end
 end
 
 local driver = CreateFrame("Frame")
@@ -47,42 +69,76 @@ driver:SetScript("OnUpdate", function(_, elapsed)
     local db = M.db
     local editing = EditModeManagerFrame and EditModeManagerFrame.IsEditModeActive
         and EditModeManagerFrame:IsEditModeActive()
-    local hover = { micro = db.micro and Hovered("micro"), bags = db.bags and Hovered("bags") }
-    local either = hover.micro or hover.bags
-    for key in pairs(BARS) do
+    local fighting = db.combatShow and (InCombatLockdown() or UnitAffectingCombat("player"))
+    -- which bars are hovered, and is any bar of each group hovered?
+    local hover, groupHover = {}, {}
+    for _, bar in ipairs(BARS) do
+        if db[bar[1]] and Hovered(bar) then
+            hover[bar[1]] = true
+            groupHover[bar[4]] = true
+        end
+    end
+    for _, bar in ipairs(BARS) do
+        local key, group = bar[1], bar[4]
         local target = 1
         if db[key] and not editing then
-            target = (hover[key] or (db.link and either)) and 1 or db.alpha / 100
+            local linked = (group == "menu" and db.link) or (group == "action" and db.linkBars)
+            local show = hover[key] or (linked and groupHover[group])
+                or (fighting and group ~= "menu")                 -- action bars / unit frames: full in combat
+            target = show and 1 or db.alpha / 100
         end
         local cur = current[key]
         if math.abs(cur - target) > 0.01 then
-            SetBarAlpha(key, cur + (target - cur) * math.min(1, dt * db.speed))   -- ease towards target
+            SetBarAlpha(bar, cur + (target - cur) * math.min(1, dt * db.speed))   -- ease towards target
         elseif cur ~= target then
-            SetBarAlpha(key, target)
+            SetBarAlpha(bar, target)
         end
     end
 end)
 driver:Hide()
 
 function M:OnEnable() driver:Show() end
-function M:OnDisable() driver:Hide(); for key in pairs(BARS) do SetBarAlpha(key, 1) end end
+function M:OnDisable() driver:Hide(); for _, bar in ipairs(BARS) do SetBarAlpha(bar, 1) end end
 
 function M:BuildSettings(body, page)
     local db, checks = M.db, {}
-    local function Check(text, key, y)
-        local cb = TT.Check(body, text, function(v) db[key] = v; if not v and BARS[key] then SetBarAlpha(key, 1) end end)
-        cb:SetPoint("TOPLEFT", 2, y)
+    local function Check(text, key, x, y)
+        local cb = TT.Check(body, text, function(v)
+            db[key] = v
+            if not v then for _, bar in ipairs(BARS) do if bar[1] == key then SetBarAlpha(bar, 1) end end end
+        end)
+        cb:SetPoint("TOPLEFT", x, y)
         checks[key] = cb
     end
-    Check("Fade the micro menu (character, spellbook, ... buttons)", "micro", -4)
-    Check("Fade the bag bar", "bags", -28)
-    Check("Hovering one bar shows both", "link", -52)
+    local function Head(text, y)
+        local h = TT.Label(body, text:upper(), "GameFontNormalSmall")
+        h:SetTextColor(unpack(TT.C.dim)); h:SetPoint("TOPLEFT", 0, y)
+    end
+    Head("Menus", -2)
+    Check("Fade the micro menu (character, spellbook, ... buttons)", "micro", 2, -20)
+    Check("Fade the bag bar", "bags", 2, -44)
+    Check("Hovering one of these shows both", "link", 2, -68)
+    Head("Action bars and unit frames", -100)
+    local y = -118
+    local i = 0
+    for _, bar in ipairs(BARS) do
+        if bar[4] ~= "menu" then
+            local col = i % 2
+            Check(bar[2], bar[1], 2 + col * 280, y)
+            if col == 1 then y = y - 24 end
+            i = i + 1
+        end
+    end
+    if i % 2 == 1 then y = y - 24 end
+    Check("Hovering one action bar shows all of them", "linkBars", 2, y - 6)
+    Check("Show action bars and unit frames fully in combat", "combatShow", 2, y - 30)
     local alpha = TT.Stepper(body, "Faded opacity %", function() return db.alpha end, function(v) db.alpha = v end, 0, 100, 5)
-    alpha:SetPoint("TOPLEFT", 0, -84)
+    alpha:SetPoint("TOPLEFT", 0, y - 62)
     local speed = TT.Stepper(body, "Fade speed", function() return db.speed end, function(v) db.speed = v end, 2, 20, 1)
     speed:SetPoint("TOPLEFT", alpha, "BOTTOMLEFT", 0, -2)
-    local help = TT.Label(body, "0% = invisible until you hover. Bars show fully while Edit Mode is open.\n" ..
-        "Turn EnhanceQoL's mouseover option for these bars off if you still use it.", "GameFontDisableSmall")
+    local help = TT.Label(body, "0% = invisible until you hover (the buttons still work: keybinds always do).\n" ..
+        "Everything shows fully while Edit Mode is open. Turn EnhanceQoL's mouseover\n" ..
+        "options for the same bars off if you still use it.", "GameFontDisableSmall")
     help:SetPoint("TOPLEFT", speed, "BOTTOMLEFT", 0, -14)
     page.OnPageShow = function()
         for key, cb in pairs(checks) do cb:SetChecked(db[key]) end

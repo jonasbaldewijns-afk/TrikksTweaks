@@ -1,7 +1,7 @@
 ## Interface: 16001, 120105
 ## Title: Trikks Tweaks
 ## Notes: A bundle of opt-in UI and quality-of-life modules. /trikks
-## Version: 1.3
+## Version: 1.4
 ## SavedVariables: TrikksTweaksDB
 ## IconTexture: Interface\AddOns\TrikksTweaks\media\minimap
 ## AddonCompartmentFunc: TrikksTweaks_OnAddonCompartmentClick
@@ -15,6 +15,7 @@ Inspector.lua
 MinimapButton.lua
 # Interface
 Modules\ClassPortraits.lua
+Modules\CursorRing.lua
 Modules\PartyPosition.lua
 Modules\DarkMode.lua
 Modules\BarFade.lua
@@ -33,6 +34,7 @@ Modules\Chat.lua
 Modules\SpellID.lua
 Modules\SmallHelpers.lua
 Modules\DeleteJunk.lua
+Modules\Teleports.lua
 Modules\DialogKeys.lua
 # System
 Modules\CameraVisuals.lua

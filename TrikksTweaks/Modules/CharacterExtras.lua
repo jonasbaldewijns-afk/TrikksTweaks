@@ -1,7 +1,8 @@
 -- Module: Character Extras
 -- Durability % and a master volume slider on the character window, flight
 -- times on the flight map (learned the first time you fly a route), and
--- class-coloured health bars on the player / target / focus frames.
+-- class-coloured health bars on the player / target / focus frames, and item
+-- level + a missing enchant / empty socket mark on the gear slots.
 local _, TT = ...
 local M = TT:RegisterModule("CharacterExtras", {
     title = "Character Extras",
@@ -10,6 +11,9 @@ local M = TT:RegisterModule("CharacterExtras", {
     defaults = {
         durability = true, durPos = "TOPLEFT", volume = true, volPos = "BOTTOMLEFT",
         flightTimes = true, flights = {}, classBars = false,
+        itemLevel = true, enchantCheck = true, gemCheck = true, inspect = true,
+        -- slots that should carry an enchant (which ones depends on the expansion: your choice)
+        enchantSlots = { [15] = true, [5] = true, [9] = true, [7] = true, [8] = true, [16] = true },
     },
 })
 local WHITE = "Interface\\Buttons\\WHITE8x8"
@@ -181,8 +185,114 @@ ev:SetScript("OnEvent", function(_, event)
     end
 end)
 
-function M:OnEnable() UpdateDurability(); UpdateVolume(); ColorAll() end
-function M:OnDisable() UpdateDurability(); UpdateVolume() end
+---------------------------------------------------------------------------
+-- Item level and enchant / gem check on the gear slots (character + inspect)
+---------------------------------------------------------------------------
+-- slot ID -> name, for the settings (the IDs are the game's inventory slots)
+local ENCHANT_SLOTS = { { 1, "Head" }, { 3, "Shoulder" }, { 15, "Back" }, { 5, "Chest" }, { 9, "Wrist" },
+    { 10, "Hands" }, { 6, "Waist" }, { 7, "Legs" }, { 8, "Feet" }, { 11, "Ring 1" }, { 12, "Ring 2" },
+    { 16, "Main hand" }, { 17, "Off hand" } }
+
+local function ItemLevel(link)
+    local f = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
+    local lvl = f and f(link)
+    if lvl and not TT.IsSecret(lvl) and lvl > 0 then return lvl end
+end
+-- "item:id:enchant:gem1:gem2:gem3:gem4:..." -> enchant ID, number of gems in it
+local function LinkParts(link)
+    local body = link:match("item:([%-%d:]*)")
+    if not body then return 0, 0 end
+    local parts, i = {}, 0
+    for v in (body .. ":"):gmatch("([^:]*):") do i = i + 1; parts[i] = tonumber(v) or 0 end
+    local gems = 0
+    for k = 3, 6 do if (parts[k] or 0) > 0 then gems = gems + 1 end end
+    return parts[2] or 0, gems
+end
+-- how many sockets the item has (any colour)
+local function Sockets(link)
+    local f = (C_Item and C_Item.GetItemStats) or GetItemStats
+    local stats = f and f(link)
+    local n = 0
+    if type(stats) == "table" then
+        for k, v in pairs(stats) do
+            if type(k) == "string" and k:find("EMPTY_SOCKET") and type(v) == "number" then n = n + v end
+        end
+    end
+    return n
+end
+
+local function SlotTexts(button)
+    if not button.ttIlvl then
+        button.ttIlvl = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        button.ttIlvl:SetPoint("BOTTOM", 0, 2)
+        button.ttMark = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        button.ttMark:SetPoint("TOPLEFT", 2, -2)
+        button.ttMark:SetTextColor(1, 0.25, 0.25)
+    end
+    return button.ttIlvl, button.ttMark
+end
+
+local function UpdateSlot(button, unit)
+    if not button or not button.GetID then return end
+    local ilvlText, mark = SlotTexts(button)
+    local db = M.db
+    local link = unit and GetInventoryItemLink(unit, button:GetID())
+    if not (M.enabled and link) or TT.IsSecret(link) then ilvlText:SetText(""); mark:SetText(""); return end
+    local slot = button:GetID()
+    -- item level, in the item's quality colour (not for shirt / tabard)
+    local lvl = db.itemLevel and slot ~= 4 and slot ~= 19 and ItemLevel(link)
+    if lvl then
+        ilvlText:SetText(lvl)
+        local q = select(3, C_Item.GetItemInfo(link))
+        local c = q and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+        if c then ilvlText:SetTextColor(c.r, c.g, c.b) else ilvlText:SetTextColor(1, 1, 1) end
+    else
+        ilvlText:SetText("")
+    end
+    -- red "E" = should be enchanted but isn't, red "G" = an empty socket
+    local enchant, gems = LinkParts(link)
+    local m = ""
+    if db.enchantCheck and db.enchantSlots[slot] and enchant == 0 then m = "E" end
+    if db.gemCheck and Sockets(link) > gems then m = m .. "G" end
+    mark:SetText(m)
+end
+
+local GEAR_SLOTS = { "Head", "Neck", "Shoulder", "Back", "Chest", "Shirt", "Tabard", "Wrist", "Hands",
+    "Waist", "Legs", "Feet", "Finger0", "Finger1", "Trinket0", "Trinket1", "MainHand", "SecondaryHand", "Ranged" }
+local function UpdateCharacterSlots()
+    for _, n in ipairs(GEAR_SLOTS) do UpdateSlot(_G["Character" .. n .. "Slot"], "player") end
+end
+local function UpdateInspectSlots()
+    local unit = InspectFrame and InspectFrame.unit
+    for _, n in ipairs(GEAR_SLOTS) do
+        local b = _G["Inspect" .. n .. "Slot"]
+        if b then UpdateSlot(b, M.db.inspect and unit or nil) end
+    end
+end
+if type(PaperDollItemSlotButton_Update) == "function" then
+    hooksecurefunc("PaperDollItemSlotButton_Update", function(b) UpdateSlot(b, "player") end)
+end
+local inspectHooked = false
+local function HookInspect()
+    if inspectHooked or type(InspectPaperDollItemSlotButton_Update) ~= "function" then return end
+    inspectHooked = true
+    hooksecurefunc("InspectPaperDollItemSlotButton_Update", function(b)
+        UpdateSlot(b, M.db.inspect and InspectFrame and InspectFrame.unit or nil)
+    end)
+end
+local gearEv = CreateFrame("Frame")
+gearEv:RegisterEvent("ADDON_LOADED")
+gearEv:RegisterEvent("INSPECT_READY")
+gearEv:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+gearEv:SetScript("OnEvent", function(_, event)
+    if event == "ADDON_LOADED" then HookInspect()
+    elseif event == "INSPECT_READY" then C_Timer.After(0.1, UpdateInspectSlots)
+    else C_Timer.After(0.1, UpdateCharacterSlots) end
+end)
+HookInspect()
+
+function M:OnEnable() UpdateDurability(); UpdateVolume(); ColorAll(); UpdateCharacterSlots() end
+function M:OnDisable() UpdateDurability(); UpdateVolume(); UpdateCharacterSlots() end
 
 function M:BuildSettings(body, page)
     local db, checks, cycles, y = M.db, {}, {}, 0
@@ -206,6 +316,18 @@ function M:BuildSettings(body, page)
         ColorAll()
         if not db.classBars then TT.Print("health bars go back to green after a /reload.") end
     end)
+    Check("itemLevel", "Item level on the gear slots", UpdateCharacterSlots)
+    Check("gemCheck", "Red G on items with an empty gem socket", UpdateCharacterSlots)
+    Check("enchantCheck", "Red E on items that should be enchanted but aren't:", UpdateCharacterSlots)
+    -- which slots count as "should be enchanted": three columns of checkboxes
+    for i, sd in ipairs(ENCHANT_SLOTS) do
+        local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
+        local cb = TT.Check(body, sd[2], function(v) db.enchantSlots[sd[1]] = v or nil; UpdateCharacterSlots() end)
+        cb:SetPoint("TOPLEFT", 22 + col * 150, -(y + row * 22))
+        checks["slot" .. sd[1]] = { SetChecked = function() cb:SetChecked(db.enchantSlots[sd[1]] and true or false) end }
+    end
+    y = y + math.ceil(#ENCHANT_SLOTS / 3) * 22 + 4
+    Check("inspect", "Also on the inspect window", UpdateInspectSlots)
     local count = TT.Label(body, "", "GameFontHighlightSmall")
     count:SetPoint("TOPLEFT", 4, -y - 6)
     local clear = TT.Button(body, "Forget flight times", 140, function()
@@ -217,9 +339,13 @@ function M:BuildSettings(body, page)
         "text / slider sits in. If BBF also colours health bars, use only one of them.",
         "GameFontDisableSmall")
     help:SetPoint("TOPLEFT", 0, -y - 60)
+    local help2 = TT.Label(body,
+        "Which slots can be enchanted depends on the expansion: tick the ones that apply.", "GameFontDisableSmall")
+    help2:SetPoint("TOPLEFT", help, "BOTTOMLEFT", 0, -6)
     page.OnPageShow = function()
         for key, cb in pairs(checks) do cb:SetChecked(db[key]) end
         for _, c in ipairs(cycles) do c.Refresh() end
+        UpdateCharacterSlots()
         local n = 0
         for _ in pairs(db.flights) do n = n + 1 end
         count:SetText(n .. " flight route" .. (n == 1 and "" or "s") .. " learned")

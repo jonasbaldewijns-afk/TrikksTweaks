@@ -1,86 +1,84 @@
--- Module: Bank Alt
--- A button at the mailbox that sends items (and gold) to your bank alt:
--- whitelisted items, whole item types (cloth, herbs, ore, ...) and, if you
--- want, all gold above an amount you keep.
+-- Module: Mail to Alts
+-- Two saved characters ("Main" and "Bank alt"), each with its own rules:
+-- items to always send (whitelist), whole item types (cloth, herbs, ore, ...)
+-- and all gold above an amount you keep. At a mailbox there is a button per
+-- character; it opens a small menu: send all, only items, only gold, settings.
+-- The button for the character you're playing is hidden (no mailing yourself).
 --
--- How: one mail holds up to 12 items. The button fills a mail, sends it, and
--- when the server says it arrived (MAIL_SEND_SUCCESS) it does the next one.
+-- How sending works: one mail holds up to 12 items. A mail is filled and sent,
+-- and when the server says it arrived (MAIL_SEND_SUCCESS) the next one follows.
 -- Gold goes in the last mail. If the game refuses to send without a click (it
 -- reports ADDON_ACTION_BLOCKED) or doesn't answer, the chain stops and the
--- button says "Send next mail": each click then sends one.
+-- button says "next mail": each click then sends one.
 -- Soulbound, locked and quest items are never sent (they can't be mailed).
 local _, TT = ...
+local C = TT.C
 local IsSecret = TT.IsSecret
+
+local function Profile(label)
+    return { name = "", label = label, subject = "", items = {}, types = {}, gold = false, keepGold = 50 }
+end
 local M = TT:RegisterModule("BankAlt", {
-    title = "Bank Alt",
+    title = "Mail to Alts",
     category = "Quality of Life",
-    desc = "A mailbox button that sends whitelisted items, chosen item types and spare gold to your bank alt.",
-    defaults = {
-        recipient = "", subject = "Bank", items = {},
-        types = {}, gold = false, keepGold = 50,
-    },
+    desc = "Mailbox buttons for your main and your bank alt: send whitelisted items, item types and spare gold in one click.",
+    defaults = { profiles = { main = Profile("Main"), bank = Profile("Bank alt") } },
 })
+local KEYS = { "main", "bank" }
 
 local MAX = ATTACHMENTS_MAX_SEND or 12
-local POSTAGE_GUESS = 30                 -- copper per item, only used to keep a margin
+local POSTAGE_GUESS = 30                 -- copper per item, only to keep a margin
 
 -- item types you can tick: { key, label, classID, subclassID (nil = whole class) }
 local TG = Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods or 7
 local GEM = Enum and Enum.ItemClass and Enum.ItemClass.Gem or 3
 local TYPES = {
-    { "cloth",     "Cloth",            TG, 5 },
-    { "leather",   "Leather",          TG, 6 },
+    { "cloth",     "Cloth",             TG, 5 },
+    { "leather",   "Leather",           TG, 6 },
     { "metal",     "Ore, bars & stone", TG, 7 },
-    { "herb",      "Herbs",            TG, 9 },
-    { "cooking",   "Meat & cooking",   TG, 8 },
-    { "elemental", "Elemental",        TG, 10 },
-    { "enchant",   "Enchanting",       TG, 12 },
-    { "parts",     "Parts",            TG, 1 },
-    { "jewel",     "Jewelcrafting",    TG, 4 },
-    { "gems",      "Gems",             GEM, nil },
+    { "herb",      "Herbs",             TG, 9 },
+    { "cooking",   "Meat & cooking",    TG, 8 },
+    { "elemental", "Elemental",         TG, 10 },
+    { "enchant",   "Enchanting",        TG, 12 },
+    { "parts",     "Parts",             TG, 1 },
+    { "jewel",     "Jewelcrafting",     TG, 4 },
+    { "gems",      "Gems",              GEM, nil },
 }
 
 ---------------------------------------------------------------------------
--- What to send
+-- Who and what
 ---------------------------------------------------------------------------
-local function Me() return UnitName("player") end
-local function TargetName()
-    local r = strtrim(M.db.recipient or "")
-    return r ~= "" and r or nil
+local function P(key) return M.db.profiles[key] end
+local function NameOf(key)
+    local n = strtrim(P(key).name or "")
+    return n ~= "" and n or nil
 end
 local function IsMe(name)
     if not name then return false end
-    return name:lower() == Me():lower() or name:lower():match("^(.-)%-") == Me():lower()
+    local me = UnitName("player"):lower()
+    name = name:lower()
+    return name == me or name:match("^(.-)%-") == me
 end
 
-local whitelist = {}
-local function RebuildWhitelist()
-    wipe(whitelist)
-    for _, id in ipairs(M.db.items) do whitelist[id] = true end
-end
-
-local function Wanted(itemID)
-    if whitelist[itemID] then return true end
+local function Wanted(p, itemID)
+    for _, id in ipairs(p.items) do if id == itemID then return true end end
     local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
     if not classID then return false end
     for _, t in ipairs(TYPES) do
-        if M.db.types[t[1]] and classID == t[3] and (t[4] == nil or subclassID == t[4]) then return true end
+        if p.types[t[1]] and classID == t[3] and (t[4] == nil or subclassID == t[4]) then return true end
     end
     return false
 end
 
-local function LastBag()
-    return (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4)
-end
-
--- every bag slot holding something to send: { bag, slot }
-local function Collect()
+-- every bag slot with something for this profile: { bag, slot }
+local function Collect(p)
     local list = {}
-    for bag = 0, LastBag() do
+    local last = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4
+    for bag = 0, last do
         for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info and info.itemID and not IsSecret(info.itemID) and not info.isBound and not info.isLocked
-               and Wanted(info.itemID) then
+               and Wanted(p, info.itemID) then
                 local q = C_Container.GetContainerItemQuestInfo and C_Container.GetContainerItemQuestInfo(bag, slot)
                 if not (q and (q.isQuestItem or q.questID)) then list[#list + 1] = { bag, slot } end
             end
@@ -89,25 +87,40 @@ local function Collect()
     return list
 end
 
-local function SpareGold(mailsLeft, itemsLeft)
-    if not M.db.gold then return 0 end
-    local keep = (M.db.keepGold or 0) * 10000
-    local margin = (itemsLeft + mailsLeft) * POSTAGE_GUESS
-    return math.max(0, GetMoney() - keep - margin)
+local function SpareGold(p, margin)
+    if not p.gold then return 0 end
+    return math.max(0, GetMoney() - (p.keepGold or 0) * 10000 - (margin or 0))
+end
+
+-- what a mode would send right now: items, mails, gold (copper)
+local function Plan(key, mode)
+    local p = P(key)
+    local items = (mode ~= "gold") and #Collect(p) or 0
+    local mails = math.ceil(items / MAX)
+    local gold = (mode ~= "items") and SpareGold(p, (items + 1) * POSTAGE_GUESS) or 0
+    if gold > 0 and mails == 0 then mails = 1 end
+    return items, mails, gold
+end
+
+local function Money(copper)
+    if GetCoinTextureString then return GetCoinTextureString(copper) end
+    return math.floor(copper / 10000) .. "g"
 end
 
 ---------------------------------------------------------------------------
 -- Sending
 ---------------------------------------------------------------------------
-local button, ev
-local queue, sending, manual, timer = {}, false, false, nil
-local UpdateButton
+local buttons, menu, ev = {}, nil, nil
+local job                        -- { key, mode, manual, more } while a run is going
+local sending, timer = false, nil
+local UpdateButtons
 
-local function Stop(why)
+local function Stop(why, keepJob)
     sending = false
     if timer then timer:Cancel(); timer = nil end
-    if why then TT.Print("Bank Alt: " .. why) end
-    UpdateButton()
+    if not keepJob then job = nil end
+    if why then TT.Print("Mail to Alts: " .. why) end
+    UpdateButtons()
 end
 
 local function ShowSendTab()
@@ -116,15 +129,15 @@ local function ShowSendTab()
     end
 end
 
--- fill one mail with up to 12 items (and the gold, if this is the last one) and send it
 local function SendOne()
-    local to = TargetName()
-    if not to or IsMe(to) then return Stop("set your bank alt's name in /trikks first (not this character).") end
+    if not job then return end
+    local p, to = P(job.key), NameOf(job.key)
+    if not to or IsMe(to) then return Stop("set a different character's name in /trikks first.") end
     if not (MailFrame and MailFrame:IsShown()) then return Stop() end
     ShowSendTab()
     if ClearSendMail then ClearSendMail() end
-    -- the bag contents may have moved since the last mail: look again
-    queue = Collect()
+    -- bags may have moved since the last mail: look again every time
+    local queue = job.mode ~= "gold" and Collect(p) or {}
     local n = 0
     while n < MAX and #queue > 0 do
         local spot = table.remove(queue, 1)
@@ -134,185 +147,283 @@ local function SendOne()
         ClickSendMailItemButton(n)
     end
     ClearCursor()
-    local last = #queue == 0
     local money = 0
-    if last then
+    if #queue == 0 and job.mode ~= "items" then       -- last mail: the gold goes along
         local postage = GetSendMailPrice and GetSendMailPrice() or n * POSTAGE_GUESS
-        money = math.max(0, SpareGold(0, 0) - postage)
+        money = math.max(0, SpareGold(p) - postage)
         if money > 0 then SetSendMailMoney(money) end
     end
-    if n == 0 and money == 0 then return Stop("nothing (left) to send.") end
-    local subject = (M.db.subject ~= "" and M.db.subject or "Bank")
+    if n == 0 and money == 0 then return Stop("nothing to send.") end
+    job.more = #queue > 0
     sending = true
-    SendMail(to, subject, "")
-    -- no answer from the server in time: stop and leave it to the next click
+    SendMail(to, (p.subject ~= "" and p.subject or p.label), "")
     if timer then timer:Cancel() end
-    timer = C_Timer.NewTimer(6, function() manual = true; Stop("no answer from the mailbox, click to send the next mail.") end)
-    UpdateButton()
+    timer = C_Timer.NewTimer(6, function()
+        if job then job.manual = true end
+        Stop("no answer from the mailbox: click the button again for the next mail.", true)
+    end)
+    UpdateButtons()
 end
 
-local function Start()
+local function Start(key, mode)
     if sending then return end
-    RebuildWhitelist()
+    if job and job.key == key and job.manual then job.mode = mode or job.mode
+    else job = { key = key, mode = mode or "all" } end
     SendOne()
 end
 
-UpdateButton = function()
-    if not button then return end
-    local to = TargetName()
-    local items = #Collect()
-    local mails = math.ceil(items / MAX)
-    local gold = SpareGold(mails, items)
-    if gold > 0 and mails == 0 then mails = 1 end
-    button:SetShown(M.enabled and MailFrame and MailFrame:IsShown() and true or false)
-    if sending then
-        button:SetText("Sending..."); button:Disable()
-    elseif not to then
-        button:SetText("Set a bank alt in /trikks"); button:Disable()
-    elseif IsMe(to) then
-        button:SetText("This is the bank alt"); button:Disable()
-    elseif mails == 0 then
-        button:SetText("Nothing to send to " .. to); button:Disable()
-    else
-        local label = manual and "Send next mail" or ("Send to " .. to)
-        button:SetText(string.format("%s (%d %s)", label, mails, mails == 1 and "mail" or "mails"))
-        button:Enable()
+---------------------------------------------------------------------------
+-- Mailbox buttons and their menu
+---------------------------------------------------------------------------
+local function HideMenu() if menu then menu:Hide() end end
+
+local function MenuItem(i, text, enabled, fn)
+    local b = menu.items[i]
+    if not b then
+        b = TT.Button(menu, "", 200, nil)
+        b:SetHeight(22)
+        b:SetPoint("TOPLEFT", 6, -6 - (i - 1) * 25)
+        menu.items[i] = b
     end
+    b:SetText(text)
+    b:SetEnabled(enabled)
+    b:SetScript("OnClick", function() HideMenu(); fn() end)
+    b:Show()
 end
 
-local function OnEvent(_, event, a1, a2)
+local function OpenMenu(key, anchor)
+    if menu:IsShown() and menu.key == key then HideMenu(); return end
+    menu.key = key
+    local _, mails = Plan(key, "all")
+    local iItems, iMails = Plan(key, "items")
+    local _, _, gGold = Plan(key, "gold")
+    MenuItem(1, string.format("Send all  (%d %s)", mails, mails == 1 and "mail" or "mails"), mails > 0,
+        function() Start(key, "all") end)
+    MenuItem(2, string.format("Only items  (%d in %d %s)", iItems, iMails, iMails == 1 and "mail" or "mails"), iItems > 0,
+        function() Start(key, "items") end)
+    MenuItem(3, gGold > 0 and ("Only gold  (" .. Money(gGold) .. ")") or "Only gold  (none spare)", gGold > 0,
+        function() Start(key, "gold") end)
+    MenuItem(4, "Settings...", true, function() TT:ShowPage("BankAlt") end)
+    menu.title:SetText(P(key).label .. ": " .. (NameOf(key) or "?"))
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+    menu:Show()
+end
+
+UpdateButtons = function()
+    local open = M.enabled and MailFrame and MailFrame:IsShown()
+    local x = 0
+    for _, key in ipairs(KEYS) do
+        local b = buttons[key]
+        local to = NameOf(key)
+        local show = open and to and not IsMe(to) and true or false
+        b:SetShown(show)
+        if show then
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", MailFrame, "BOTTOMLEFT", x, -4)
+            x = x + b:GetWidth() + 6
+            local label = P(key).label .. ": " .. to
+            if sending and job and job.key == key then
+                b:SetText("Sending..."); b:Disable()
+            elseif job and job.key == key and job.manual then
+                b:SetText(label .. "  (next mail)"); b:Enable()
+            else
+                b:SetText(label); b:Enable()
+            end
+        end
+    end
+    if not open then HideMenu() end
+end
+
+local function OnEvent(_, event, _, a2)
     if event == "MAIL_SHOW" then
-        manual = false
-        RebuildWhitelist()
-        C_Timer.After(0, UpdateButton)
+        job = nil
+        C_Timer.After(0, UpdateButtons)
     elseif event == "MAIL_CLOSED" then
         if sending then Stop() end
-        if button then button:Hide() end
+        job = nil
+        UpdateButtons()
     elseif event == "MAIL_SEND_SUCCESS" then
         if not sending then return end
         if timer then timer:Cancel(); timer = nil end
         sending = false
-        if manual then UpdateButton(); return end
-        -- next mail a moment later (the bags update first)
-        C_Timer.After(0.6, function()
-            -- gold always rides in the last mail, so only items can be left over here
-            if #Collect() > 0 then SendOne() else TT.Print("Bank Alt: all sent."); UpdateButton() end
-        end)
-    elseif event == "MAIL_FAILED" then
-        if sending then manual = true; Stop("a mail failed (is the name right?), nothing more was sent.") end
-    elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
-        -- the game wants a real click for each mail: switch to one mail per click
-        if sending and a2 and tostring(a2):find("SendMail") then
-            manual = true
-            if ClearSendMail then ClearSendMail() end
-            Stop("the game wants a click for each mail: click the button again for the next one.")
+        if not job then return UpdateButtons() end
+        if not job.more then
+            TT.Print("Mail to Alts: all sent to " .. (NameOf(job.key) or "?") .. ".")
+            job = nil
+            return UpdateButtons()
         end
-    elseif event == "BAG_UPDATE_DELAYED" then
-        if not sending and button and button:IsShown() then UpdateButton() end
+        if job.manual then return UpdateButtons() end
+        C_Timer.After(0.6, SendOne)                  -- next mail once the bags have updated
+    elseif event == "MAIL_FAILED" then
+        if sending then Stop("a mail failed (is the name right?), nothing more was sent.") end
+    elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
+        -- the game wants a real click per mail: one mail per click from now on
+        if sending and a2 and tostring(a2):find("SendMail") and job then
+            job.manual = true
+            if ClearSendMail then ClearSendMail() end
+            Stop("the game wants a click for each mail: click the button again for the next one.", true)
+        end
+    elseif event == "GLOBAL_MOUSE_DOWN" then
+        if menu and menu:IsShown() and not menu:IsMouseOver() then
+            local overButton = false
+            for _, b in pairs(buttons) do if b:IsMouseOver() then overButton = true end end
+            if not overButton then HideMenu() end
+        end
     end
 end
 
 function M:Setup()
-    button = TT.Button(UIParent, "", 230, function() Start() end)
-    button:SetHeight(24)
-    button:Hide()
+    for _, key in ipairs(KEYS) do
+        local b = TT.Button(UIParent, "", 170, nil)
+        b:SetHeight(24)
+        b:SetScript("OnClick", function(self)
+            if job and job.key == key and job.manual and not sending then Start(key) else OpenMenu(key, self) end
+        end)
+        b:Hide()
+        buttons[key] = b
+    end
+    menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    menu:SetSize(212, 6 + 4 * 25 + 20)
+    menu:SetFrameStrata("DIALOG")
+    TT.Flat(menu, C.bg, C.border)
+    menu.items = {}
+    menu.title = TT.Label(menu, "", "GameFontNormalSmall")
+    menu.title:SetPoint("BOTTOMLEFT", 8, 6)
+    menu.title:SetTextColor(unpack(C.dim))
+    menu:Hide()
     ev = CreateFrame("Frame")
     ev:SetScript("OnEvent", OnEvent)
 end
 
-local EVENTS = { "MAIL_SHOW", "MAIL_CLOSED", "MAIL_SEND_SUCCESS", "MAIL_FAILED", "ADDON_ACTION_BLOCKED",
-                 "ADDON_ACTION_FORBIDDEN", "BAG_UPDATE_DELAYED" }
+local EVENTS = { "MAIL_SHOW", "MAIL_CLOSED", "MAIL_SEND_SUCCESS", "MAIL_FAILED",
+                 "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN", "GLOBAL_MOUSE_DOWN" }
+function M:OnLoad()
+    -- the first version had one recipient: move it into the "Bank alt" profile
+    local db = M.db
+    if db.recipient and db.recipient ~= "" and db.profiles.bank.name == "" then
+        local b = db.profiles.bank
+        b.name, b.subject, b.items, b.types = db.recipient, db.subject or "", db.items or {}, db.types or {}
+        b.gold, b.keepGold = db.gold or false, db.keepGold or 50
+    end
+    db.recipient, db.subject, db.items, db.types, db.gold, db.keepGold = nil, nil, nil, nil, nil, nil
+end
 function M:OnEnable()
-    RebuildWhitelist()
     for _, e in ipairs(EVENTS) do pcall(ev.RegisterEvent, ev, e) end
     if MailFrame then
-        button:SetParent(MailFrame)
-        button:ClearAllPoints()
-        button:SetPoint("TOPLEFT", MailFrame, "BOTTOMLEFT", 0, -4)
-        button:SetFrameStrata(MailFrame:GetFrameStrata())
+        for _, b in pairs(buttons) do b:SetParent(MailFrame); b:SetFrameStrata(MailFrame:GetFrameStrata()) end
     end
-    UpdateButton()
+    UpdateButtons()
 end
 function M:OnDisable()
     for _, e in ipairs(EVENTS) do pcall(ev.UnregisterEvent, ev, e) end
     if sending then Stop() end
-    button:Hide()
+    for _, b in pairs(buttons) do b:Hide() end
+    HideMenu()
 end
 
 ---------------------------------------------------------------------------
--- Settings
+-- Settings: one tab per character
 ---------------------------------------------------------------------------
 function M:BuildSettings(body, page)
-    local db, refreshers, y = M.db, {}, 0
+    local shown = "main"
+    local refreshers = {}
+    local tabs = {}
+    local function Refresh() for _, f in ipairs(refreshers) do f() end end
+    for i, key in ipairs(KEYS) do
+        local t = TT.Button(body, "", 140, function() shown = key; Refresh() end)
+        t:SetPoint("TOPLEFT", (i - 1) * 146, 0)
+        tabs[key] = t
+    end
+    refreshers[#refreshers + 1] = function()
+        for _, key in ipairs(KEYS) do
+            local n = NameOf(key)
+            tabs[key]:SetText(P(key).label .. (n and (": " .. n) or ""))
+            tabs[key]:SetBackdropBorderColor(unpack(key == shown and C.accent or C.border))
+        end
+    end
+    local y = 36
     local function Head(text)
         local h = TT.Label(body, text:upper(), "GameFontNormalSmall")
-        h:SetTextColor(unpack(TT.C.dim)); h:SetPoint("TOPLEFT", 0, -y); y = y + 20
+        h:SetTextColor(unpack(C.dim)); h:SetPoint("TOPLEFT", 0, -y); y = y + 20
     end
-    local function Box(label, key, w)
+    local function Box(label, field, w)
         local l = TT.Label(body, label)
         l:SetPoint("TOPLEFT", 2, -y - 4)
         local b = TT.EditBox(body, w, 22)
         b:SetPoint("TOPLEFT", 140, -y)
-        b:SetScript("OnTextChanged", function(box) db[key] = strtrim(box:GetText() or ""); UpdateButton() end)
-        b:SetScript("OnEnterPressed", function(box) box:ClearFocus() end)
-        refreshers[#refreshers + 1] = function() b:SetText(db[key] or "") end
+        b:SetScript("OnTextChanged", function(box, user)
+            if user then P(shown)[field] = strtrim(box:GetText() or ""); UpdateButtons() end
+        end)
+        b:SetScript("OnEnterPressed", function(box) box:ClearFocus(); Refresh() end)
+        b:SetScript("OnEditFocusLost", function() Refresh() end)
+        refreshers[#refreshers + 1] = function() b:SetText(P(shown)[field] or "") end
         y = y + 28
     end
 
-    Head("Bank alt")
-    Box("Character name", "recipient", 180)
+    Head("Character")
+    Box("Character name", "name", 180)
+    Box("Button label", "label", 180)
     Box("Mail subject", "subject", 180)
     y = y + 4
 
     Head("Item types to send")
     for i, t in ipairs(TYPES) do
         local col = (i - 1) % 3
-        local cb = TT.Check(body, t[2], function(v) db.types[t[1]] = v or nil; UpdateButton() end)
+        local cb = TT.Check(body, t[2], function(v) P(shown).types[t[1]] = v or nil end)
         cb:SetPoint("TOPLEFT", 2 + col * 190, -y)
-        refreshers[#refreshers + 1] = function() cb:SetChecked(db.types[t[1]] and true or false) end
+        refreshers[#refreshers + 1] = function() cb:SetChecked(P(shown).types[t[1]] and true or false) end
         if col == 2 or i == #TYPES then y = y + 24 end
     end
     y = y + 6
 
     Head("Gold")
-    local gcb = TT.Check(body, "Send gold, keep this much on the character:", function(v) db.gold = v; UpdateButton() end)
+    local gcb = TT.Check(body, "Send gold, keep this much on the character:", function(v) P(shown).gold = v end)
     gcb:SetPoint("TOPLEFT", 2, -y)
-    refreshers[#refreshers + 1] = function() gcb:SetChecked(db.gold) end
-    local keep = TT.Stepper(body, "Keep (gold)", function() return db.keepGold end,
-        function(v) db.keepGold = v; UpdateButton() end, 0, 100000, 10)
+    refreshers[#refreshers + 1] = function() gcb:SetChecked(P(shown).gold) end
+    local keep = TT.Stepper(body, "Keep (gold)", function() return P(shown).keepGold end,
+        function(v) P(shown).keepGold = v end, 0, 100000, 10)
     keep:SetPoint("TOPLEFT", 330, -y + 4)
     refreshers[#refreshers + 1] = keep.Refresh
     y = y + 34
 
     Head("Always send these items")
-    -- drop an item from your bags here, or type its ID in the box below
+    -- one ID list per character, only the shown one is visible
+    local holder = CreateFrame("Frame", nil, body)
+    holder:SetPoint("TOPLEFT", 0, -y); holder:SetSize(360, 160)
+    local lists = {}
+    for _, key in ipairs(KEYS) do
+        local l = TT.IDList(holder, 360, 160, P(key).items, function(id)
+            local n = C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+            return id .. (n and ("  " .. n) or "")
+        end)
+        l:SetPoint("TOPLEFT")
+        lists[key] = l
+    end
+    refreshers[#refreshers + 1] = function()
+        for key, l in pairs(lists) do l:SetShown(key == shown); if key == shown then l.Refresh() end end
+    end
     local drop = TT.Button(body, "Drop an item here", 170, nil)
     drop:SetPoint("TOPLEFT", 380, -y)
-    local list
     local function AddFromCursor()
         local kind, id = GetCursorInfo()
         if kind == "item" and id then
             ClearCursor()
-            for _, v in ipairs(db.items) do if v == id then return end end
-            db.items[#db.items + 1] = id
-            RebuildWhitelist(); list.Refresh(); UpdateButton()
+            local items = P(shown).items
+            for _, v in ipairs(items) do if v == id then return end end
+            items[#items + 1] = id
+            Refresh()
         end
     end
     drop:SetScript("OnReceiveDrag", AddFromCursor)
     drop:SetScript("OnClick", AddFromCursor)
-    list = TT.IDList(body, 360, 160, db.items, function(id)
-        local n = C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
-        return id .. (n and ("  " .. n) or "")
-    end, function() RebuildWhitelist(); UpdateButton() end)
-    list:SetPoint("TOPLEFT", 0, -y)
-    refreshers[#refreshers + 1] = list.Refresh
     y = y + 168
     local help = TT.Label(body,
-        "At a mailbox, the button under the mail window sends everything above, 12 items\n" ..
-        "per mail, one mail after another (gold in the last one). Soulbound, locked and\n" ..
-        "quest items are never sent. If the game wants a click for each mail, the button\n" ..
-        "says \"Send next mail\" and each click sends one.", "GameFontDisableSmall")
+        "At a mailbox there is a button per character under the mail window (not for the one\n" ..
+        "you're playing). It opens a menu: send all, only items, only gold. 12 items per mail,\n" ..
+        "one mail after another, gold in the last one. Soulbound, locked and quest items are\n" ..
+        "never sent. If the game wants a click per mail, the button says \"next mail\".", "GameFontDisableSmall")
     help:SetPoint("TOPLEFT", 0, -y)
 
-    page.OnPageShow = function() for _, f in ipairs(refreshers) do f() end end
+    page.OnPageShow = Refresh
 end

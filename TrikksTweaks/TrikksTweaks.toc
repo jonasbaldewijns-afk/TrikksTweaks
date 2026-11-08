@@ -20,7 +20,6 @@ Modules\CursorRing.lua
 Modules\PartyPosition.lua
 Modules\SoloParty.lua
 Modules\DarkMode.lua
-Modules\Fonts.lua
 Modules\BarFade.lua
 Modules\Minimap.lua
 Modules\ClutterText.lua

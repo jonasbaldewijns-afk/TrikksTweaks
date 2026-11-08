@@ -26,6 +26,7 @@ Modules\BarFade.lua
 Modules\Minimap.lua
 Modules\ClutterText.lua
 Modules\XPBar.lua
+Modules\LootFeed.lua
 Modules\Tooltips.lua
 Modules\HideFrames.lua
 Modules\CharacterExtras.lua

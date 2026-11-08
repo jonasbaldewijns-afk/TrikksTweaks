@@ -60,8 +60,6 @@ local function UpdatePortrait(frame)
     -- NPC, or module off: Blizzard drew the normal portrait; undo our crop.
     if portrait.ttCropped then portrait:SetTexCoord(0, 1, 0, 1); portrait.ttCropped = nil end
 end
--- hooksecurefunc can't be undone, so the hook stays and checks M.enabled.
-hooksecurefunc("UnitFramePortrait_Update", UpdatePortrait)
 
 local function RefreshAll()
     for _, name in ipairs({ "PlayerFrame", "TargetFrame", "FocusFrame",
@@ -76,6 +74,9 @@ local function RefreshAll()
     end
 end
 
+-- hooksecurefunc can't be undone, so once on, the hook stays and checks M.enabled.
+function M:Setup() hooksecurefunc("UnitFramePortrait_Update", UpdatePortrait) end
+
 function M:OnEnable() RefreshAll() end
 function M:OnDisable() RefreshAll() end
 
@@ -86,7 +87,7 @@ function M:BuildSettings(body, page)
     local radios = {}
     local function Refresh() for i, r in ipairs(radios) do r:SetChecked(M.db.style == i) end end
     for i, style in ipairs(STYLES) do
-        local cb = TT.Check(body, style.name, function() M.db.style = i; Refresh(); RefreshAll() end)
+        local cb = TT.Check(body, style.name, function() M.db.style = i; Refresh(); if M.enabled then RefreshAll() end end)
         cb:SetPoint("TOPLEFT", l, "BOTTOMLEFT", 0, -8 - (i - 1) * 40)
         -- preview of your own class in this style
         local prev = body:CreateTexture(nil, "ARTWORK")

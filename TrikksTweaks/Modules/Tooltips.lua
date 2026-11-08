@@ -69,31 +69,34 @@ local function OnUnit(tooltip)
     if db.hideHealthBar and GameTooltipStatusBar then GameTooltipStatusBar:Hide() end
     tooltip:Show()
 end
-TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnUnit)
 
--- Position: Blizzard calls GameTooltip_SetDefaultAnchor for most tooltips;
--- we re-anchor right after it.
-hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip, parent)
-    if not M.enabled then return end
-    local db = M.db
-    if db.anchor == "MOUSE" then
-        tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", db.mouseX, db.mouseY)
-    elseif db.anchor == "FIXED" then
-        tooltip:ClearAllPoints()
-        tooltip:SetPoint(db.point, UIParent, db.point, db.x, db.y)
-    end
-end)
+function M:Setup()
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnUnit)
 
--- Hide in combat (hold Shift to see it anyway)
-GameTooltip:HookScript("OnShow", function(self)
-    local db = M.db
-    if not (M.enabled and db and db.hideCombat) or not InCombatLockdown() or IsShiftKeyDown() then return end
-    if db.combatUnitsOnly then
-        local _, unit = self:GetUnit()
-        if not unit then return end
-    end
-    self:Hide()
-end)
+    -- Position: Blizzard calls GameTooltip_SetDefaultAnchor for most tooltips;
+    -- we re-anchor right after it.
+    hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip, parent)
+        if not M.enabled then return end
+        local db = M.db
+        if db.anchor == "MOUSE" then
+            tooltip:SetOwner(parent, "ANCHOR_CURSOR_RIGHT", db.mouseX, db.mouseY)
+        elseif db.anchor == "FIXED" then
+            tooltip:ClearAllPoints()
+            tooltip:SetPoint(db.point, UIParent, db.point, db.x, db.y)
+        end
+    end)
+
+    -- Hide in combat (hold Shift to see it anyway)
+    GameTooltip:HookScript("OnShow", function(self)
+        local db = M.db
+        if not (M.enabled and db and db.hideCombat) or not InCombatLockdown() or IsShiftKeyDown() then return end
+        if db.combatUnitsOnly then
+            local _, unit = self:GetUnit()
+            if not unit then return end
+        end
+        self:Hide()
+    end)
+end
 
 local function ApplyScale()
     local s = (M.enabled and M.db.scale or 100) / 100
@@ -119,7 +122,7 @@ function M:BuildSettings(body, page)
     end
     local function Step(text, key, min, max, step, after)
         local s = TT.Stepper(body, text, function() return db[key] end,
-            function(v) db[key] = v; if after then after() end end, min, max, step)
+            function(v) db[key] = v; if after and M.enabled then after() end end, min, max, step)
         s:SetPoint("TOPLEFT", 20, -y)
         refresh[#refresh + 1] = s.Refresh
         y = y + 26

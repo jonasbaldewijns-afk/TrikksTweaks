@@ -14,14 +14,10 @@ local COLOURS = { { "class", "Class colour" }, { "accent", "Trikks green" }, { "
 local RGB = { accent = { 0.2, 1, 0.6 }, white = { 1, 1, 1 }, red = { 1, 0.25, 0.25 },
               yellow = { 1, 0.85, 0.1 }, blue = { 0.3, 0.6, 1 } }
 
-local ring = CreateFrame("Frame", nil, UIParent)
-ring:SetFrameStrata("TOOLTIP")
-ring:EnableMouse(false)
-local tex = ring:CreateTexture(nil, "OVERLAY")
-tex:SetAllPoints()
-ring:Hide()
+local ring, tex                 -- made in Setup (the first time the module is switched on)
 
 local function Apply()
+    if not ring then return end
     local db = M.db
     ring:SetSize(db.size, db.size)
     tex:SetTexture(TT.MEDIA .. (db.thick and "ring-thick" or "ring-thin"))
@@ -41,41 +37,52 @@ end
 -- outside combat.
 local inCombat = false
 local function Refresh()
+    if not ring then return end
     local db = M.enabled and M.db
     if not db then ring:Hide(); return end
     local menus = db.hideInMenus and ((GameMenuFrame and GameMenuFrame:IsShown()) or (TT.hub and TT.hub:IsShown()))
     ring:SetShown(not menus and (inCombat or not db.combatOnly))
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_REGEN_DISABLED")
-ev:RegisterEvent("PLAYER_REGEN_ENABLED")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_REGEN_DISABLED" then inCombat = true
-    elseif event == "PLAYER_REGEN_ENABLED" then inCombat = false
-    else inCombat = InCombatLockdown() or UnitAffectingCombat("player") or false end
-    Refresh()
-end)
-for _, f in ipairs({ GameMenuFrame, TT.hub }) do
-    if f then f:HookScript("OnShow", Refresh); f:HookScript("OnHide", Refresh) end
+function M:Setup()
+    inCombat = InCombatLockdown() or UnitAffectingCombat("player") or false
+    ring = CreateFrame("Frame", nil, UIParent)
+    ring:SetFrameStrata("TOOLTIP")
+    ring:EnableMouse(false)
+    tex = ring:CreateTexture(nil, "OVERLAY")
+    tex:SetAllPoints()
+    ring:Hide()
+
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_REGEN_DISABLED")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" then inCombat = true
+        elseif event == "PLAYER_REGEN_ENABLED" then inCombat = false
+        else inCombat = InCombatLockdown() or UnitAffectingCombat("player") or false end
+        Refresh()
+    end)
+    for _, f in ipairs({ GameMenuFrame, TT.hub }) do
+        if f then f:HookScript("OnShow", Refresh); f:HookScript("OnHide", Refresh) end
+    end
+
+    -- follow the cursor (cursor position is in screen pixels: divide by the UI scale)
+    local GetCursorPosition = GetCursorPosition
+    local lastX, lastY
+    ring:SetScript("OnUpdate", function(self)
+        local x, y = GetCursorPosition()
+        if x == lastX and y == lastY then return end      -- cursor didn't move: nothing to do
+        lastX, lastY = x, y
+        local s = UIParent:GetEffectiveScale()
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / s, y / s)
+    end)
+    ring:SetScript("OnShow", function() lastX = nil end)   -- jump to the cursor right away
 end
 
--- follow the cursor (cursor position is in screen pixels: divide by the UI scale)
-local GetCursorPosition = GetCursorPosition
-local lastX, lastY
-ring:SetScript("OnUpdate", function(self)
-    local x, y = GetCursorPosition()
-    if x == lastX and y == lastY then return end      -- cursor didn't move: nothing to do
-    lastX, lastY = x, y
-    local s = UIParent:GetEffectiveScale()
-    self:ClearAllPoints()
-    self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / s, y / s)
-end)
-ring:SetScript("OnShow", function() lastX = nil end)   -- jump to the cursor right away
-
 function M:OnEnable() Apply(); Refresh() end
-function M:OnDisable() ring:Hide() end
+function M:OnDisable() if ring then ring:Hide() end end
 
 function M:BuildSettings(body, page)
     local db, refreshers, y = M.db, {}, 0

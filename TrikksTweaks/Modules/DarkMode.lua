@@ -70,6 +70,9 @@ end
 local function Color() return M.db.brightness / 100 end
 
 -- Darken a texture (or every texture region of a frame).
+-- kept here, not as fields on Blizzard's textures (taint)
+local busy, locked = nil, {}
+
 local function Darken(obj, on)
     if obj.IsForbidden and obj:IsForbidden() then return end
     if obj.GetObjectType and obj:GetObjectType() ~= "Texture" then
@@ -81,19 +84,19 @@ local function Darken(obj, on)
         return
     end
     local c = on and Color() or 1
-    obj.ttDarkBusy = true                  -- our own calls must not trigger our hooks
+    busy = obj                             -- our own calls must not trigger our hooks
     obj:SetDesaturated(on)
     obj:SetVertexColor(c, c, c)
-    obj.ttDarkBusy = nil
+    busy = nil
 end
 
 -- Blizzard recolours / re-textures some of these on updates (e.g. elite target
 -- borders). Hook those calls and put our colour back right after them.
 local function Lock(tex, category)
-    if tex.ttDarkLocked or tex:GetObjectType() ~= "Texture" then return end
-    tex.ttDarkLocked = true
+    if locked[tex] or tex:GetObjectType() ~= "Texture" then return end
+    locked[tex] = true
     local function reapply(self)
-        if self.ttDarkBusy then return end
+        if busy == self then return end
         if M.enabled and M.db[category] then Darken(self, true) end
     end
     hooksecurefunc(tex, "SetVertexColor", reapply)
@@ -123,11 +126,13 @@ local function DarkenTooltip(tt)
         ns:SetBorderColor(c, c, c, 1)
     end
 end
-for _, tt in ipairs({ GameTooltip, ItemRefTooltip, ShoppingTooltip1, ShoppingTooltip2 }) do
-    if tt then tt:HookScript("OnShow", DarkenTooltip) end
-end
-if type(SharedTooltip_SetBackdropStyle) == "function" then
-    hooksecurefunc("SharedTooltip_SetBackdropStyle", function(tt) DarkenTooltip(tt) end)
+local function HookTooltips()
+    for _, tt in ipairs({ GameTooltip, ItemRefTooltip, ShoppingTooltip1, ShoppingTooltip2 }) do
+        if tt then tt:HookScript("OnShow", DarkenTooltip) end
+    end
+    if type(SharedTooltip_SetBackdropStyle) == "function" then
+        hooksecurefunc("SharedTooltip_SetBackdropStyle", function(tt) DarkenTooltip(tt) end)
+    end
 end
 
 local function ApplyAll()
@@ -135,14 +140,17 @@ local function ApplyAll()
     for category in pairs(TARGETS) do ApplyCategory(category) end
 end
 
-local ev = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED",
-                     "GROUP_ROSTER_UPDATE", "UNIT_PET", "UNIT_CLASSIFICATION_CHANGED" }) do
-    ev:RegisterEvent(e)
+function M:Setup()
+    HookTooltips()
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED",
+                         "GROUP_ROSTER_UPDATE", "UNIT_PET", "UNIT_CLASSIFICATION_CHANGED" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", function()
+        if M.enabled then C_Timer.After(0, ApplyAll) end   -- after Blizzard/BBF have updated
+    end)
 end
-ev:SetScript("OnEvent", function()
-    if M.enabled then C_Timer.After(0, ApplyAll) end   -- after Blizzard/BBF have updated
-end)
 
 StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
     text = "%s\n\nReload your UI now?",
@@ -171,6 +179,7 @@ function M:BuildSettings(body, page)
         local key = item[1]
         local cb = TT.Check(body, item[2], function(v)
             db[key] = v
+            if not M.enabled then return end
             if key == "tooltips" then
                 if not v then TT.Print("tooltips go back to normal after a reload.") end
             else
@@ -182,7 +191,7 @@ function M:BuildSettings(body, page)
     end
 
     local bright = TT.Stepper(body, "Brightness %", function() return db.brightness end,
-        function(v) db.brightness = v; ApplyAll() end, 0, 100, 5)
+        function(v) db.brightness = v; if M.enabled then ApplyAll() end end, 0, 100, 5)
     bright:SetPoint("TOPLEFT", 0, -4 - #list * 26 - 10)
 
     local help = TT.Label(body,

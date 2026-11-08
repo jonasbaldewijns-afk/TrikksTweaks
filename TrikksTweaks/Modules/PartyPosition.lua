@@ -110,16 +110,18 @@ local function Hook()
     end
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:RegisterEvent("GROUP_ROSTER_UPDATE")
-ev:RegisterEvent("PLAYER_REGEN_ENABLED")
-ev:SetScript("OnEvent", function(_, event)
-    Hook()
-    if event == "PLAYER_REGEN_ENABLED" and not pending then return end
-    -- next frame: after Blizzard's own handler for the same event
-    C_Timer.After(0, function() RememberSlots(); Apply() end)
-end)
+function M:Setup()
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("GROUP_ROSTER_UPDATE")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:SetScript("OnEvent", function(_, event)
+        Hook()
+        if event == "PLAYER_REGEN_ENABLED" and not pending then return end
+        -- next frame: after Blizzard's own handler for the same event
+        C_Timer.After(0, function() RememberSlots(); Apply() end)
+    end)
+end
 
 function M:OnEnable() Hook(); RememberSlots(); Apply() end
 function M:OnDisable() Apply() end
@@ -138,7 +140,7 @@ function M:BuildSettings(body, page)
     end
     for i, c in ipairs(choices) do
         local cb = TT.Check(body, c[2], function()
-            M.db.position = c[1]; Refresh(); Apply()
+            M.db.position = c[1]; Refresh(); if M.enabled then Apply() end
             if InCombatLockdown() then TT.Print("party order will update after combat.") end
         end)
         cb:SetPoint("TOPLEFT", l, "BOTTOMLEFT", 2, -8 - (i - 1) * 24)

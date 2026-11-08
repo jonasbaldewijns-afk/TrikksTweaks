@@ -93,23 +93,29 @@ local function IsModifier(key)
     return key:find("SHIFT") or key:find("CTRL") or key:find("ALT")
 end
 
--- Key catcher: sees every key, lets it through unless we used it
-local catcher = CreateFrame("Frame", nil, UIParent)
-catcher:EnableKeyboard(true)
-catcher:SetPropagateKeyboardInput(true)
-catcher:SetScript("OnKeyDown", function(self, key)
-    if InCombatLockdown() then return end                   -- can't change key handling in combat
-    local used = false
-    if M.enabled and not GetCurrentKeyBoardFocus() and not IsModifier(key) and Combo(key) == M.db.key then
-        used = DeleteCheapest()
-    end
-    self:SetPropagateKeyboardInput(not used)                -- false = the game doesn't also get this key
-end)
+-- Key catcher: sees every key, lets it through unless we used it. Only exists
+-- once the module was switched on, and is hidden (gets no keys) while it's off.
+local catcher
+function M:Setup()
+    catcher = CreateFrame("Frame", nil, UIParent)
+    catcher:EnableKeyboard(true)
+    catcher:SetPropagateKeyboardInput(true)
+    catcher:SetScript("OnKeyDown", function(self, key)
+        if InCombatLockdown() then return end                   -- can't change key handling in combat
+        local used = false
+        if M.enabled and not GetCurrentKeyBoardFocus() and not IsModifier(key) and Combo(key) == M.db.key then
+            used = DeleteCheapest()
+        end
+        self:SetPropagateKeyboardInput(not used)                -- false = the game doesn't also get this key
+    end)
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("MERCHANT_SHOW")
-ev:RegisterEvent("MERCHANT_CLOSED")
-ev:SetScript("OnEvent", function(_, event) merchantOpen = (event == "MERCHANT_SHOW") end)
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("MERCHANT_SHOW")
+    ev:RegisterEvent("MERCHANT_CLOSED")
+    ev:SetScript("OnEvent", function(_, event) merchantOpen = (event == "MERCHANT_SHOW") end)
+end
+function M:OnEnable() catcher:Show() end
+function M:OnDisable() catcher:Hide() end
 
 ---------------------------------------------------------------------------
 function M:BuildSettings(body, page)

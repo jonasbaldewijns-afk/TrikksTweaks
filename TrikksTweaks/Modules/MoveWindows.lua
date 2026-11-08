@@ -84,21 +84,23 @@ local function HookAll()
     for _, name in ipairs(FRAMES) do Hook(name) end
 end
 
--- The panel manager re-arranges open windows (e.g. when a second one opens).
-if type(UpdateUIPanelPositions) == "function" then
-    hooksecurefunc("UpdateUIPanelPositions", function()
-        if not M.enabled then return end
-        for f in pairs(hooked) do if f:IsShown() then Restore(f) end end
+function M:Setup()
+    -- The panel manager re-arranges open windows (e.g. when a second one opens).
+    if type(UpdateUIPanelPositions) == "function" then
+        hooksecurefunc("UpdateUIPanelPositions", function()
+            if not M.enabled then return end
+            for f in pairs(hooked) do if f:IsShown() then Restore(f) end end
+        end)
+    end
+
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("ADDON_LOADED")          -- load-on-demand windows (auction house, talents, ...)
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:SetScript("OnEvent", function()
+        if M.enabled then HookAll() end
     end)
 end
-
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("ADDON_LOADED")          -- load-on-demand windows (auction house, talents, ...)
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:RegisterEvent("PLAYER_REGEN_ENABLED")
-ev:SetScript("OnEvent", function()
-    if M.enabled then HookAll() end
-end)
 
 function M:OnLoad()
     if not M.db.imported then

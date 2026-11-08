@@ -7,16 +7,17 @@ local M = TT:RegisterModule("HideFrames", {
     title = "Hide Blizzard Frames",
     category = "Interface",
     desc = "Hide alerts, talking head, event toasts, boss banner, gryphons, rested animation and the stance bar.",
-    defaults = { alerts = false, talkingHead = true, toasts = false, bossBanner = true,
-                 gryphons = true, rested = true, stanceBar = false },
+    -- every option is opt-in: switching the module on hides nothing until you tick it
+    defaults = { alerts = false, talkingHead = false, toasts = false, bossBanner = false,
+                 gryphons = false, rested = false, stanceBar = false },
 })
 
-local hidden = CreateFrame("Frame")
-hidden:Hide()
+local hidden                     -- made in Setup
+local origParent, driven = {}, {}  -- kept here, not as fields on Blizzard's frames (taint)
 local function Stash(f, hide)
-    if not f then return end
-    f.ttParent = f.ttParent or f:GetParent()
-    f:SetParent(hide and hidden or f.ttParent)
+    if not f or not hidden then return end
+    origParent[f] = origParent[f] or f:GetParent()
+    f:SetParent(hide and hidden or origParent[f])
 end
 local function On(key) return M.enabled and M.db[key] end
 
@@ -55,19 +56,23 @@ local function Apply()
     if stance and not InCombatLockdown() then
         if On("stanceBar") then
             RegisterStateDriver(stance, "visibility", "hide")
-            stance.ttDriven = true
-        elseif stance.ttDriven then
+            driven[stance] = true
+        elseif driven[stance] then
             UnregisterStateDriver(stance, "visibility")
-            stance.ttDriven = nil
+            driven[stance] = nil
             stance:Show()
         end
     end
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:RegisterEvent("ADDON_LOADED")               -- the talking head loads on demand
-ev:SetScript("OnEvent", function() if M.enabled then Apply() end end)
+function M:Setup()
+    hidden = CreateFrame("Frame")
+    hidden:Hide()
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("ADDON_LOADED")               -- the talking head loads on demand
+    ev:SetScript("OnEvent", function() if M.enabled then Apply() end end)
+end
 
 StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
     text = "%s\n\nReload your UI now?",
@@ -86,7 +91,7 @@ function M:BuildSettings(body, page)
     local db, checks, y = M.db, {}, 0
     local function Check(key, text)
         local cb = TT.Check(body, text, function(v)
-            db[key] = v; Apply()
+            db[key] = v; if M.enabled then Apply() end
             if key == "bossBanner" and not v then TT.Print("the boss banner comes back after a /reload.") end
         end)
         cb:SetPoint("TOPLEFT", 2, -y)

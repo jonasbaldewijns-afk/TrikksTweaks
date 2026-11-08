@@ -116,15 +116,17 @@ local function Queue()
     C_Timer.After(0.5, function() queued = false; Update() end)
 end
 
-local ev = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "BAG_UPDATE_DELAYED", "PLAYER_LEVEL_UP",
-                     "PLAYER_REGEN_ENABLED", "GET_ITEM_INFO_RECEIVED" }) do
-    ev:RegisterEvent(e)
+function M:Setup()
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "BAG_UPDATE_DELAYED", "PLAYER_LEVEL_UP",
+                         "PLAYER_REGEN_ENABLED", "GET_ITEM_INFO_RECEIVED" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" and not pending then return end
+        Queue()
+    end)
 end
-ev:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_REGEN_ENABLED" and not pending then return end
-    Queue()
-end)
 
 function M:OnEnable() Queue() end
 

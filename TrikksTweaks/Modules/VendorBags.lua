@@ -26,30 +26,36 @@ local function StackCount(tooltip)
     return 1
 end
 
-TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-    if not (M.enabled and M.db.sellPrice) or not data or not data.id then return end
-    if TT.IsSecret(data.id) then return end
-    -- the game already showed a price (e.g. at a vendor): don't add a second one
-    if (tooltip.shownMoneyFrames or 0) > 0 then return end
-    local price = select(11, C_Item.GetItemInfo(data.id))
-    if not price or price <= 0 then return end
-    local count = StackCount(tooltip)
-    if SetTooltipMoney then
-        SetTooltipMoney(tooltip, price * count, nil, (SELL_PRICE or "Sell Price") .. ":",
-            count > 1 and (" (" .. GetCoinTextureString(price) .. " each)") or nil)
-    else
-        tooltip:AddLine((SELL_PRICE or "Sell Price") .. ": " .. GetCoinTextureString(price * count), 1, 1, 1)
-    end
-    tooltip:Show()
-end)
+local function HookTooltip()
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        if not (M.enabled and M.db.sellPrice) or not data or not data.id then return end
+        if TT.IsSecret(data.id) then return end
+        -- the game already showed a price (e.g. at a vendor): don't add a second one
+        if (tooltip.shownMoneyFrames or 0) > 0 then return end
+        local price = select(11, C_Item.GetItemInfo(data.id))
+        if not price or price <= 0 then return end
+        local count = StackCount(tooltip)
+        if SetTooltipMoney then
+            SetTooltipMoney(tooltip, price * count, nil, (SELL_PRICE or "Sell Price") .. ":",
+                count > 1 and (" (" .. GetCoinTextureString(price) .. " each)") or nil)
+        else
+            tooltip:AddLine((SELL_PRICE or "Sell Price") .. ": " .. GetCoinTextureString(price * count), 1, 1, 1)
+        end
+        tooltip:Show()
+    end)
+end
 
 ---------------------------------------------------------------------------
 -- Item level on gear in your bags
 ---------------------------------------------------------------------------
+local ilvlText = setmetatable({}, { __mode = "k" })   -- button -> its text (not a field on Blizzard's button)
 local function BagButtonIlvl(b)
-    if not b.ttIlvl then
-        b.ttIlvl = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-        b.ttIlvl:SetPoint("TOPLEFT", 2, -2)
+    local fs = ilvlText[b]
+    if not fs then
+        if not (M.enabled and M.db.bagIlvl) then return end   -- nothing to show, nothing to make
+        fs = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        fs:SetPoint("TOPLEFT", 2, -2)
+        ilvlText[b] = fs
     end
     local text = ""
     if M.enabled and M.db.bagIlvl and b.GetBagID then
@@ -65,12 +71,12 @@ local function BagButtonIlvl(b)
                 if lvl and not TT.IsSecret(lvl) and lvl > 1 then
                     text = lvl
                     local c = info.quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[info.quality]
-                    if c then b.ttIlvl:SetTextColor(c.r, c.g, c.b) else b.ttIlvl:SetTextColor(1, 1, 1) end
+                    if c then fs:SetTextColor(c.r, c.g, c.b) else fs:SetTextColor(1, 1, 1) end
                 end
             end
         end
     end
-    b.ttIlvl:SetText(text)
+    fs:SetText(text)
 end
 local function BagIlvl(frame)
     if type(frame.EnumerateValidItems) ~= "function" then return end
@@ -78,10 +84,6 @@ local function BagIlvl(frame)
 end
 local bagFrames = { "ContainerFrameCombinedBags" }
 for i = 1, 13 do bagFrames[#bagFrames + 1] = "ContainerFrame" .. i end
-for _, n in ipairs(bagFrames) do
-    local f = _G[n]
-    if f and type(f.UpdateItems) == "function" then hooksecurefunc(f, "UpdateItems", BagIlvl) end
-end
 local function RefreshBags()
     for _, n in ipairs(bagFrames) do
         local f = _G[n]
@@ -152,15 +154,22 @@ local function ApplyDress()
     if dressButtons then dressButtons:SetShown(M.enabled and M.db.dressingRoom) end
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:RegisterEvent("BAG_UPDATE_DELAYED")
-ev:SetScript("OnEvent", function(_, event)
-    if not M.enabled then return end      -- OnDisable already put everything back
-    UpdateFree()
-    if event == "PLAYER_ENTERING_WORLD" then ApplyDress() end
-end)
-if DressUpFrame then DressUpFrame:HookScript("OnShow", ApplyDress) end
+function M:Setup()
+    HookTooltip()
+    for _, n in ipairs(bagFrames) do
+        local f = _G[n]
+        if f and type(f.UpdateItems) == "function" then hooksecurefunc(f, "UpdateItems", BagIlvl) end
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("BAG_UPDATE_DELAYED")
+    ev:SetScript("OnEvent", function(_, event)
+        if not M.enabled then return end      -- OnDisable already put everything back
+        UpdateFree()
+        if event == "PLAYER_ENTERING_WORLD" then ApplyDress() end
+    end)
+    if DressUpFrame then DressUpFrame:HookScript("OnShow", ApplyDress) end
+end
 
 function M:OnEnable() UpdateFree(); ApplyDress() end
 function M:OnDisable() UpdateFree(); ApplyDress() end
@@ -168,7 +177,7 @@ function M:OnDisable() UpdateFree(); ApplyDress() end
 function M:BuildSettings(body, page)
     local db, checks, y = M.db, {}, 0
     local function Check(key, text, after)
-        local cb = TT.Check(body, text, function(v) db[key] = v; if after then after() end end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; if after and M.enabled then after() end end)
         cb:SetPoint("TOPLEFT", 2, -y)
         checks[key] = cb
         y = y + 24

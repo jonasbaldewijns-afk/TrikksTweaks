@@ -43,9 +43,11 @@ local function Apply()
     end
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:SetScript("OnEvent", function() if M.enabled then Apply() end end)
+function M:Setup()
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:SetScript("OnEvent", function() if M.enabled then Apply() end end)
+end
 
 function M:OnEnable() Apply() end
 function M:OnDisable() Apply() end
@@ -53,11 +55,11 @@ function M:OnDisable() Apply() end
 function M:BuildSettings(body, page)
     local db, checks, steps, y = M.db, {}, {}, 0
     local function Check(key, text)
-        local cb = TT.Check(body, text, function(v) db[key] = v; Apply() end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; if M.enabled then Apply() end end)
         cb:SetPoint("TOPLEFT", 2, -y); checks[key] = cb; y = y + 24
     end
     local function Step(text, key, min, max, step)
-        local s = TT.Stepper(body, text, function() return db[key] end, function(v) db[key] = v; Apply() end, min, max, step)
+        local s = TT.Stepper(body, text, function() return db[key] end, function(v) db[key] = v; if M.enabled then Apply() end end, min, max, step)
         s:SetPoint("TOPLEFT", 20, -y); steps[#steps + 1] = s; y = y + 26
     end
     Check("zoom", "Further camera zoom")

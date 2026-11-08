@@ -43,123 +43,132 @@ local function AddSpellID(tooltip, data)
     end
     tooltip:Show()
 end
-TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell, AddSpellID)
-TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.UnitAura, AddSpellID)
+local function HookTooltips()
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell, AddSpellID)
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.UnitAura, AddSpellID)
 
--- 1.4: more IDs (each can be switched off). Shown with the same key as spell IDs.
-local function IDLine(tooltip, label, id)
-    tooltip:AddDoubleLine(label, tostring(id), 0.5, 0.8, 1, 1, 1, 1)
-end
-local function IconLine(tooltip, icon)
-    if M.db.iconIDs and icon and not TT.IsSecret(icon) then IDLine(tooltip, "Icon ID", icon) end
-end
-local function Usable(tooltip, data)
-    return M.enabled and (tooltip == GameTooltip or tooltip == ItemRefTooltip
-        or tooltip == ShoppingTooltip1 or tooltip == ShoppingTooltip2)
-        and data and HoverModDown()
-end
-local T = Enum.TooltipDataType
--- items: item ID + icon ID
-TooltipDataProcessor.AddTooltipPostCall(T.Item, function(tooltip, data)
-    if not (Usable(tooltip, data) and M.db.itemIDs) or not data.id or TT.IsSecret(data.id) then return end
-    tooltip:AddLine(" ")
-    IDLine(tooltip, "Item ID", data.id)
-    IconLine(tooltip, C_Item.GetItemIconByID and C_Item.GetItemIconByID(data.id))
-    tooltip:Show()
-end)
--- spells also get their icon ID (spell ID itself comes from AddSpellID)
-TooltipDataProcessor.AddTooltipPostCall(T.Spell, function(tooltip, data)
-    if not (Usable(tooltip, data) and M.db.iconIDs) or not data.id or TT.IsSecret(data.id) then return end
-    local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(data.id)
-    if icon then IconLine(tooltip, icon); tooltip:Show() end
-end)
--- NPCs: the NPC ID is part of the unit's GUID ("Creature-0-...-<npcID>-...")
-TooltipDataProcessor.AddTooltipPostCall(T.Unit, function(tooltip, data)
-    if not (Usable(tooltip, data) and M.db.npcIDs) or not data.guid or TT.IsSecret(data.guid) then return end
-    local kind, _, _, _, _, npcID = strsplit("-", data.guid)
-    if (kind == "Creature" or kind == "Vehicle") and npcID then
-        tooltip:AddLine(" ")
-        IDLine(tooltip, "NPC ID", npcID)
-        tooltip:Show()
+    -- 1.4: more IDs (each can be switched off). Shown with the same key as spell IDs.
+    local function IDLine(tooltip, label, id)
+        tooltip:AddDoubleLine(label, tostring(id), 0.5, 0.8, 1, 1, 1, 1)
     end
-end)
-if T.Currency then
-    TooltipDataProcessor.AddTooltipPostCall(T.Currency, function(tooltip, data)
-        if not (Usable(tooltip, data) and M.db.currencyIDs) or not data.id or TT.IsSecret(data.id) then return end
+    local function IconLine(tooltip, icon)
+        if M.db.iconIDs and icon and not TT.IsSecret(icon) then IDLine(tooltip, "Icon ID", icon) end
+    end
+    local function Usable(tooltip, data)
+        return M.enabled and (tooltip == GameTooltip or tooltip == ItemRefTooltip
+            or tooltip == ShoppingTooltip1 or tooltip == ShoppingTooltip2)
+            and data and HoverModDown()
+    end
+    local T = Enum.TooltipDataType
+    -- items: item ID + icon ID
+    TooltipDataProcessor.AddTooltipPostCall(T.Item, function(tooltip, data)
+        if not (Usable(tooltip, data) and M.db.itemIDs) or not data.id or TT.IsSecret(data.id) then return end
         tooltip:AddLine(" ")
-        IDLine(tooltip, "Currency ID", data.id)
+        IDLine(tooltip, "Item ID", data.id)
+        IconLine(tooltip, C_Item.GetItemIconByID and C_Item.GetItemIconByID(data.id))
         tooltip:Show()
     end)
-end
-if T.Quest then
-    TooltipDataProcessor.AddTooltipPostCall(T.Quest, function(tooltip, data)
-        if not (Usable(tooltip, data) and M.db.questIDs) or not data.id or TT.IsSecret(data.id) then return end
-        tooltip:AddLine(" ")
-        IDLine(tooltip, "Quest ID", data.id)
-        tooltip:Show()
+    -- spells also get their icon ID (spell ID itself comes from AddSpellID)
+    TooltipDataProcessor.AddTooltipPostCall(T.Spell, function(tooltip, data)
+        if not (Usable(tooltip, data) and M.db.iconIDs) or not data.id or TT.IsSecret(data.id) then return end
+        local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(data.id)
+        if icon then IconLine(tooltip, icon); tooltip:Show() end
     end)
+    -- NPCs: the NPC ID is part of the unit's GUID ("Creature-0-...-<npcID>-...")
+    TooltipDataProcessor.AddTooltipPostCall(T.Unit, function(tooltip, data)
+        if not (Usable(tooltip, data) and M.db.npcIDs) or not data.guid or TT.IsSecret(data.guid) then return end
+        local kind, _, _, _, _, npcID = strsplit("-", data.guid)
+        if (kind == "Creature" or kind == "Vehicle") and npcID then
+            tooltip:AddLine(" ")
+            IDLine(tooltip, "NPC ID", npcID)
+            tooltip:Show()
+        end
+    end)
+    if T.Currency then
+        TooltipDataProcessor.AddTooltipPostCall(T.Currency, function(tooltip, data)
+            if not (Usable(tooltip, data) and M.db.currencyIDs) or not data.id or TT.IsSecret(data.id) then return end
+            tooltip:AddLine(" ")
+            IDLine(tooltip, "Currency ID", data.id)
+            tooltip:Show()
+        end)
+    end
+    if T.Quest then
+        TooltipDataProcessor.AddTooltipPostCall(T.Quest, function(tooltip, data)
+            if not (Usable(tooltip, data) and M.db.questIDs) or not data.id or TT.IsSecret(data.id) then return end
+            tooltip:AddLine(" ")
+            IDLine(tooltip, "Quest ID", data.id)
+            tooltip:Show()
+        end)
+    end
+    -- quest links in chat (and some quest lists) open as a "quest:<id>" hyperlink
+    hooksecurefunc(ItemRefTooltip, "SetHyperlink", function(tooltip, link)
+        if not (M.enabled and M.db.questIDs and type(link) == "string") or TT.IsSecret(link) then return end
+        local id = link:match("^quest:(%d+)")
+        if id and HoverModDown() then IDLine(tooltip, "Quest ID", id); tooltip:Show() end
+    end)
+    GameTooltip:HookScript("OnHide", function() currentID = nil end)
 end
--- quest links in chat (and some quest lists) open as a "quest:<id>" hyperlink
-hooksecurefunc(ItemRefTooltip, "SetHyperlink", function(tooltip, link)
-    if not (M.enabled and M.db.questIDs and type(link) == "string") or TT.IsSecret(link) then return end
-    local id = link:match("^quest:(%d+)")
-    if id and HoverModDown() then IDLine(tooltip, "Quest ID", id); tooltip:Show() end
-end)
-GameTooltip:HookScript("OnHide", function() currentID = nil end)
 
 -- Copy box: addons can't reach the clipboard, so we pre-select the text
 -- and the player's own Ctrl+C copies it.
-local copyBox = CreateFrame("Frame", "TrikksTweaksCopyFrame", UIParent, "BackdropTemplate")
-copyBox:SetSize(360, 70)
-copyBox:SetPoint("CENTER", 0, 150)
-copyBox:SetFrameStrata("DIALOG")
-TT.Flat(copyBox, TT.C.bg, TT.C.accent)
-copyBox:Hide()
-tinsert(UISpecialFrames, "TrikksTweaksCopyFrame")
-local cl = TT.Label(copyBox, "Ctrl+C to copy, Esc to close", "GameFontNormal")
-cl:SetPoint("TOP", 0, -10)
+local copyBox, edit              -- made the first time something is copied
+local function MakeCopyBox()
+    copyBox = CreateFrame("Frame", "TrikksTweaksCopyFrame", UIParent, "BackdropTemplate")
+    copyBox:SetSize(360, 70)
+    copyBox:SetPoint("CENTER", 0, 150)
+    copyBox:SetFrameStrata("DIALOG")
+    TT.Flat(copyBox, TT.C.bg, TT.C.accent)
+    copyBox:Hide()
+    tinsert(UISpecialFrames, "TrikksTweaksCopyFrame")
+    local cl = TT.Label(copyBox, "Ctrl+C to copy, Esc to close", "GameFontNormal")
+    cl:SetPoint("TOP", 0, -10)
 
-local edit = TT.EditBox(copyBox, 330, 22)
-edit:SetPoint("BOTTOM", 0, 12)
-edit:SetJustifyH("CENTER")
-edit:SetScript("OnEscapePressed", function() copyBox:Hide() end)
-edit:SetScript("OnEnterPressed", function() copyBox:Hide() end)
-edit:SetScript("OnTextChanged", function(self, user)          -- read-only
-    if user then self:SetText(copyBox.value or ""); self:HighlightText() end
-end)
-edit:SetScript("OnKeyDown", function(_, key)
-    if key == "C" and IsControlKeyDown() then C_Timer.After(0.1, function() copyBox:Hide() end) end
-end)
+    edit = TT.EditBox(copyBox, 330, 22)
+    edit:SetPoint("BOTTOM", 0, 12)
+    edit:SetJustifyH("CENTER")
+    edit:SetScript("OnEscapePressed", function() copyBox:Hide() end)
+    edit:SetScript("OnEnterPressed", function() copyBox:Hide() end)
+    edit:SetScript("OnTextChanged", function(self, user)          -- read-only
+        if user then self:SetText(copyBox.value or ""); self:HighlightText() end
+    end)
+    edit:SetScript("OnKeyDown", function(_, key)
+        if key == "C" and IsControlKeyDown() then C_Timer.After(0.1, function() copyBox:Hide() end) end
+    end)
+end
 
 local function ShowCopy(id)
+    if not copyBox then MakeCopyBox() end
     copyBox.value = tostring(id)
     copyBox:Show()
     edit:SetText(copyBox.value); edit:SetFocus(); edit:HighlightText()
 end
 
 -- Watches keys, passes them all through except our copy combo on a spell tooltip.
-local keyWatcher = CreateFrame("Frame", nil, UIParent)
-keyWatcher:EnableKeyboard(true)
-keyWatcher:SetPropagateKeyboardInput(true)
-keyWatcher:SetScript("OnKeyDown", function(self, key)
-    if InCombatLockdown() then return end              -- propagation is locked in combat
-    if M.enabled and M.db.copyEnabled and key == M.db.copyKey and currentID
-       and GameTooltip:IsShown() and CopyModDown() and not copyBox:IsShown() then
-        self:SetPropagateKeyboardInput(false)
-        ShowCopy(currentID)
-    else
-        self:SetPropagateKeyboardInput(true)
-    end
-end)
+local keyWatcher                 -- made in Setup; hidden (gets no keys) while the module is off
+local function MakeWatchers()
+    keyWatcher = CreateFrame("Frame", nil, UIParent)
+    keyWatcher:EnableKeyboard(true)
+    keyWatcher:SetPropagateKeyboardInput(true)
+    keyWatcher:SetScript("OnKeyDown", function(self, key)
+        if InCombatLockdown() then return end              -- propagation is locked in combat
+        if M.enabled and M.db.copyEnabled and key == M.db.copyKey and currentID
+           and GameTooltip:IsShown() and CopyModDown() and not (copyBox and copyBox:IsShown()) then
+            self:SetPropagateKeyboardInput(false)
+            ShowCopy(currentID)
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
 
--- Rebuild the tooltip when the modifier is pressed/released
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("MODIFIER_STATE_CHANGED")
-ev:SetScript("OnEvent", function(_, _, key)
-    if not M.enabled then return end
-    local keys = MOD_KEYS[M.db.modifier]
-    if keys and keys[key] and GameTooltip:IsShown() and GameTooltip.RefreshData then GameTooltip:RefreshData() end
-end)
+    -- Rebuild the tooltip when the modifier is pressed/released
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("MODIFIER_STATE_CHANGED")
+    ev:SetScript("OnEvent", function(_, _, key)
+        if not M.enabled then return end
+        local keys = MOD_KEYS[M.db.modifier]
+        if keys and keys[key] and GameTooltip:IsShown() and GameTooltip.RefreshData then GameTooltip:RefreshData() end
+    end)
+end
 
 ---------------------------------------------------------------------------
 -- Wowhead quest links
@@ -186,33 +195,35 @@ end
 
 -- Right-click menus of the quest log and the objective tracker get an extra entry.
 -- (Blizzard's menu system lets addons add entries by menu "tag".)
-if Menu and Menu.ModifyMenu then
-    local function AddEntry(owner, root, ctx)
-        if not (M.enabled and M.db.questLinks) then return end
-        local id = QuestIDFrom(owner, ctx)
-        if not id and owner and owner.GetName and owner:GetName() == "ObjectiveTrackerFrame" then
-            local focus = GetMouseFoci and GetMouseFoci()[1]
-            local parent = focus and focus.GetParent and focus:GetParent()
-            id = parent and parent.poiQuestID
+local function HookQuests()
+    if Menu and Menu.ModifyMenu then
+        local function AddEntry(owner, root, ctx)
+            if not (M.enabled and M.db.questLinks) then return end
+            local id = QuestIDFrom(owner, ctx)
+            if not id and owner and owner.GetName and owner:GetName() == "ObjectiveTrackerFrame" then
+                local focus = GetMouseFoci and GetMouseFoci()[1]
+                local parent = focus and focus.GetParent and focus:GetParent()
+                id = parent and parent.poiQuestID
+            end
+            if not id then return end
+            root:CreateDivider()
+            root:CreateButton("Copy Wowhead link", function() CopyQuestLink(id) end)
         end
-        if not id then return end
-        root:CreateDivider()
-        root:CreateButton("Copy Wowhead link", function() CopyQuestLink(id) end)
+        Menu.ModifyMenu("MENU_QUEST_MAP_LOG_TITLE", AddEntry)
+        Menu.ModifyMenu("MENU_QUEST_OBJECTIVE_TRACKER", AddEntry)
     end
-    Menu.ModifyMenu("MENU_QUEST_MAP_LOG_TITLE", AddEntry)
-    Menu.ModifyMenu("MENU_QUEST_OBJECTIVE_TRACKER", AddEntry)
-end
 
--- A small "Wowhead" button on the quest window an NPC shows you.
-if QuestFrame then
-    local wh = TT.Button(QuestFrame, "Wowhead", 70, function() CopyQuestLink(GetQuestID and GetQuestID()) end)
-    wh:SetPoint("TOPRIGHT", QuestFrame, "TOPRIGHT", -30, -30)
-    wh:SetFrameLevel(QuestFrame:GetFrameLevel() + 10)
-    QuestFrame:HookScript("OnShow", function()
-        local id = GetQuestID and GetQuestID()
-        wh:SetShown(M.enabled and M.db.questLinks and id and id > 0)
-    end)
-    wh:Hide()
+    -- A small "Wowhead" button on the quest window an NPC shows you.
+    if QuestFrame then
+        local wh = TT.Button(QuestFrame, "Wowhead", 70, function() CopyQuestLink(GetQuestID and GetQuestID()) end)
+        wh:SetPoint("TOPRIGHT", QuestFrame, "TOPRIGHT", -30, -30)
+        wh:SetFrameLevel(QuestFrame:GetFrameLevel() + 10)
+        QuestFrame:HookScript("OnShow", function()
+            local id = GetQuestID and GetQuestID()
+            wh:SetShown(M.enabled and M.db.questLinks and id and id > 0)
+        end)
+        wh:Hide()
+    end
 end
 
 -- /wh <quest name or id> : link for a quest in your log
@@ -231,7 +242,9 @@ SlashCmdList.TTWOWHEAD = function(msg)
     if id then CopyQuestLink(id) else TT.Print("usage: /wh <quest ID or part of a quest name from your log>") end
 end
 
-function M:OnDisable() copyBox:Hide() end
+function M:Setup() HookTooltips(); MakeWatchers(); HookQuests() end
+function M:OnDisable() if copyBox then copyBox:Hide() end; keyWatcher:Hide() end
+function M:OnEnable() keyWatcher:Show() end
 
 function M:BuildSettings(body, page)
     local l = TT.Label(body, "Show spell ID while holding:")

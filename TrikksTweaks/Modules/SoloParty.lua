@@ -57,10 +57,6 @@ local function HookParty()
     hooksecurefunc(CompactPartyFrame, "UpdateVisibility", KeepPartyShown)
     CompactPartyFrame:HookScript("OnHide", function() C_Timer.After(0, KeepPartyShown) end)
 end
--- the frame is only made once raid-style party frames are switched on
-if CompactPartyFrame_Generate then
-    hooksecurefunc("CompactPartyFrame_Generate", function() HookParty(); KeepPartyShown() end)
-end
 
 ---------------------------------------------------------------------------
 -- Player frame
@@ -79,10 +75,6 @@ local function ApplyPlayer()
     PlayerFrame:SetAlpha(hide and 0 or 1)
     PlayerFrame:EnableMouse(not hide)
 end
-if PlayerFrame then
-    -- vehicles and loading screens can bring it back
-    PlayerFrame:HookScript("OnShow", function() if playerHidden then PlayerFrame:SetAlpha(0) end end)
-end
 
 ---------------------------------------------------------------------------
 local function Apply()
@@ -95,18 +87,28 @@ local function Apply()
     ApplyPlayer()
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:RegisterEvent("GROUP_ROSTER_UPDATE")
-ev:RegisterEvent("PLAYER_REGEN_ENABLED")
-ev:RegisterEvent("UNIT_EXITED_VEHICLE")
-ev:SetScript("OnEvent", function(_, event, unit)
-    if not M.enabled then return end
-    if event == "UNIT_EXITED_VEHICLE" and unit ~= "player" then return end
-    if event == "PLAYER_REGEN_ENABLED" and not pending then return end
-    pending = false
-    C_Timer.After(0, Apply)             -- after Blizzard's own handlers for the same event
-end)
+function M:Setup()
+    -- the party frame is only made once raid-style party frames are switched on
+    if CompactPartyFrame_Generate then
+        hooksecurefunc("CompactPartyFrame_Generate", function() HookParty(); KeepPartyShown() end)
+    end
+    if PlayerFrame then
+        -- vehicles and loading screens can bring it back
+        PlayerFrame:HookScript("OnShow", function() if playerHidden then PlayerFrame:SetAlpha(0) end end)
+    end
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("GROUP_ROSTER_UPDATE")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:RegisterEvent("UNIT_EXITED_VEHICLE")
+    ev:SetScript("OnEvent", function(_, event, unit)
+        if not M.enabled then return end
+        if event == "UNIT_EXITED_VEHICLE" and unit ~= "player" then return end
+        if event == "PLAYER_REGEN_ENABLED" and not pending then return end
+        pending = false
+        C_Timer.After(0, Apply)             -- after Blizzard's own handlers for the same event
+    end)
+end
 
 function M:OnEnable() Apply() end
 function M:OnDisable() Apply() end
@@ -114,7 +116,7 @@ function M:OnDisable() Apply() end
 function M:BuildSettings(body, page)
     local db, checks, y = M.db, {}, 0
     local function Check(key, text)
-        local cb = TT.Check(body, text, function(v) db[key] = v; Apply() end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; if M.enabled then Apply() end end)
         cb:SetPoint("TOPLEFT", 2, -y)
         checks[key] = cb
         y = y + 24

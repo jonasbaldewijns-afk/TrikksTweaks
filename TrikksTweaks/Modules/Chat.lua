@@ -24,12 +24,12 @@ local function Frames()
     return list
 end
 
-local hidden = CreateFrame("Frame")
-hidden:Hide()
+local hidden                     -- made in Setup
+local origParent, historyHooked = {}, {}   -- kept here, not as fields on Blizzard's frames
 local function Stash(f, hide)
-    if not f then return end
-    f.ttParent = f.ttParent or f:GetParent()
-    f:SetParent(hide and hidden or f.ttParent)
+    if not f or not hidden then return end
+    origParent[f] = origParent[f] or f:GetParent()
+    f:SetParent(hide and hidden or origParent[f])
 end
 
 ---------------------------------------------------------------------------
@@ -97,8 +97,8 @@ end
 
 local function HookFrames()
     for i, cf in pairs(Frames()) do
-        if not cf.ttHistoryHooked then
-            cf.ttHistoryHooked = true
+        if not historyHooked[cf] then
+            historyHooked[cf] = true
             hooksecurefunc(cf, "AddMessage", function(_, text, r, g, b) Remember(i, text, r, g, b) end)
         end
     end
@@ -125,17 +125,20 @@ end
 ---------------------------------------------------------------------------
 -- Copy window: the selected chat tab as plain, selectable text
 ---------------------------------------------------------------------------
-local copyWin = TT.Window("TrikksTweaksCopyChat", 620, 420, "Copy chat")
-copyWin:SetFrameStrata("DIALOG")
-local copyScroll = TT.Scroll(copyWin)
-copyScroll:SetPoint("TOPLEFT", 12, -36); copyScroll:SetPoint("BOTTOMRIGHT", -18, 12)
-local copyEdit = CreateFrame("EditBox", nil, copyScroll)
-copyEdit:SetMultiLine(true)
-copyEdit:SetAutoFocus(false)
-copyEdit:SetFontObject("ChatFontNormal")
-copyEdit:SetWidth(580)
-copyEdit:SetScript("OnEscapePressed", function() copyWin:Hide() end)
-copyScroll:SetScrollChild(copyEdit)
+local copyWin, copyScroll, copyEdit, copyBtn    -- made the first time they're needed
+local function MakeCopyWindow()
+    copyWin = TT.Window("TrikksTweaksCopyChat", 620, 420, "Copy chat")
+    copyWin:SetFrameStrata("DIALOG")
+    copyScroll = TT.Scroll(copyWin)
+    copyScroll:SetPoint("TOPLEFT", 12, -36); copyScroll:SetPoint("BOTTOMRIGHT", -18, 12)
+    copyEdit = CreateFrame("EditBox", nil, copyScroll)
+    copyEdit:SetMultiLine(true)
+    copyEdit:SetAutoFocus(false)
+    copyEdit:SetFontObject("ChatFontNormal")
+    copyEdit:SetWidth(580)
+    copyEdit:SetScript("OnEscapePressed", function() copyWin:Hide() end)
+    copyScroll:SetScrollChild(copyEdit)
+end
 
 -- strip colour codes, icons and link markup so the copied text is clean
 local function Plain(text)
@@ -146,6 +149,7 @@ local function Plain(text)
 end
 
 local function OpenCopy()
+    if not copyWin then MakeCopyWindow() end
     local cf = SELECTED_CHAT_FRAME or DEFAULT_CHAT_FRAME
     local out = {}
     if cf.GetNumMessages and cf.GetMessageInfo then
@@ -161,18 +165,22 @@ local function OpenCopy()
     C_Timer.After(0, function() copyScroll:SetVerticalScroll(copyScroll:GetVerticalScrollRange()) end)
 end
 
-local copyBtn = TT.Button(UIParent, "C", 18, OpenCopy)
-copyBtn:SetSize(18, 18)
-copyBtn:SetAlpha(0.35)
-copyBtn:HookScript("OnEnter", function(self)
-    self:SetAlpha(1)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:SetText("Copy chat"); GameTooltip:Show()
-end)
-copyBtn:HookScript("OnLeave", function(self) self:SetAlpha(0.35); GameTooltip:Hide() end)
-copyBtn:Hide()
+local function MakeCopyButton()
+    copyBtn = TT.Button(UIParent, "C", 18, OpenCopy)
+    copyBtn:SetSize(18, 18)
+    copyBtn:SetAlpha(0.35)
+    copyBtn:HookScript("OnEnter", function(self)
+        self:SetAlpha(1)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:SetText("Copy chat"); GameTooltip:Show()
+    end)
+    copyBtn:HookScript("OnLeave", function(self) self:SetAlpha(0.35); GameTooltip:Hide() end)
+    copyBtn:Hide()
+end
 
 local function ApplyCopy()
     local on = M.enabled and M.db.copyChat
+    if on and not copyBtn then MakeCopyButton() end
+    if not copyBtn then return end
     copyBtn:SetShown(on)
     if on and ChatFrame1 then
         copyBtn:ClearAllPoints()
@@ -220,32 +228,37 @@ local function SpellLinkFilter(_, _, msg, sender)
     return msg:find("|Hspell:") ~= nil
 end
 
-local AddFilter = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
-if AddFilter then
-    AddFilter("CHAT_MSG_SYSTEM", SystemFilter)
-    for _, e in ipairs({ "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE" }) do AddFilter(e, SpellLinkFilter) end
-end
 
 ---------------------------------------------------------------------------
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_LOGIN")
-ev:RegisterEvent("PLAYER_LOGOUT")
-ev:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_LOGIN" then
-        if not M.enabled then return end
-        ApplyFade(); ApplyTweaks(); ApplyCopy()
-        if M.db.history then RestoreHistory() end
-        HookFrames()
-    elseif event == "PLAYER_LOGOUT" and M.enabled and M.db.history then
-        local out = {}
-        for i, list in pairs(live) do
-            local from = math.max(1, #list - M.db.lines + 1)
-            out[i] = {}
-            for n = from, #list do out[i][#out[i] + 1] = list[n] end
-        end
-        M.db.saved[charKey] = out
+function M:Setup()
+    hidden = CreateFrame("Frame")
+    hidden:Hide()
+    -- chat filters run on every chat line, so they're only added once the module is on
+    local AddFilter = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
+    if AddFilter then
+        AddFilter("CHAT_MSG_SYSTEM", SystemFilter)
+        for _, e in ipairs({ "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE" }) do AddFilter(e, SpellLinkFilter) end
     end
-end)
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_LOGIN")
+    ev:RegisterEvent("PLAYER_LOGOUT")
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_LOGIN" then
+            if not M.enabled then return end
+            ApplyFade(); ApplyTweaks(); ApplyCopy()
+            if M.db.history then RestoreHistory() end
+            HookFrames()
+        elseif event == "PLAYER_LOGOUT" and M.enabled and M.db.history then
+            local out = {}
+            for i, list in pairs(live) do
+                local from = math.max(1, #list - M.db.lines + 1)
+                out[i] = {}
+                for n = from, #list do out[i][#out[i] + 1] = list[n] end
+            end
+            M.db.saved[charKey] = out
+        end
+    end)
+end
 
 StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
     text = "%s\n\nReload your UI now?",
@@ -267,14 +280,14 @@ function M:BuildSettings(body, page)
         h:SetTextColor(unpack(TT.C.dim)); h:SetPoint("TOPLEFT", 0, -y); y = y + 20
     end
     local function Check(key, text, indent, after)
-        local cb = TT.Check(body, text, function(v) db[key] = v; if after then after() end end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; if after and M.enabled then after() end end)
         cb:SetPoint("TOPLEFT", 2 + (indent and 20 or 0), -y)
         checks[key] = cb
         y = y + 24
     end
     local function Step(text, key, min, max, step, after)
         local s = TT.Stepper(body, text, function() return db[key] end,
-            function(v) db[key] = v; if after then after() end end, min, max, step)
+            function(v) db[key] = v; if after and M.enabled then after() end end, min, max, step)
         s:SetPoint("TOPLEFT", 20, -y)
         steppers[#steppers + 1] = s
         y = y + 26

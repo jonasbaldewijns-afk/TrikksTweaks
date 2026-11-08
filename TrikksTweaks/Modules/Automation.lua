@@ -180,29 +180,31 @@ local function AltGossip()
 end
 
 ---------------------------------------------------------------------------
-local ev = CreateFrame("Frame")
-for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_CLOSED", "QUEST_DETAIL", "QUEST_PROGRESS",
-                     "QUEST_COMPLETE", "GOSSIP_SHOW", "QUEST_GREETING", "LOOT_READY",
-                     "CONFIRM_SUMMON", "RESURRECT_REQUEST", "PLAYER_DEAD" }) do
-    ev:RegisterEvent(e)
-end
-ev:SetScript("OnEvent", function(_, event, arg1)
-    if not M.enabled then return end
-    if event == "CONFIRM_SUMMON" then if M.db.summons then Summon() end; return end
-    if event == "RESURRECT_REQUEST" then if M.db.resurrect then Resurrect(arg1) end; return end
-    if event == "PLAYER_DEAD" then if M.db.pvpRelease then PvPRelease() end; return end
-    if event == "GOSSIP_SHOW" and M.db.altGossip then AltGossip() end
-    if event == "MERCHANT_SHOW" then Repair(); SellJunk()
-    elseif event == "MERCHANT_CLOSED" then selling = false
-    elseif event == "LOOT_READY" then if M.db.fastLoot then FastLoot() end
-    elseif M.db.quests and not Paused() then
-        if event == "QUEST_DETAIL" then QuestDetail()
-        elseif event == "QUEST_PROGRESS" then QuestProgress()
-        elseif event == "QUEST_COMPLETE" then QuestComplete()
-        elseif event == "GOSSIP_SHOW" then Gossip()
-        elseif event == "QUEST_GREETING" then Greeting() end
+function M:Setup()
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_CLOSED", "QUEST_DETAIL", "QUEST_PROGRESS",
+                         "QUEST_COMPLETE", "GOSSIP_SHOW", "QUEST_GREETING", "LOOT_READY",
+                         "CONFIRM_SUMMON", "RESURRECT_REQUEST", "PLAYER_DEAD" }) do
+        ev:RegisterEvent(e)
     end
-end)
+    ev:SetScript("OnEvent", function(_, event, arg1)
+        if not M.enabled then return end
+        if event == "CONFIRM_SUMMON" then if M.db.summons then Summon() end; return end
+        if event == "RESURRECT_REQUEST" then if M.db.resurrect then Resurrect(arg1) end; return end
+        if event == "PLAYER_DEAD" then if M.db.pvpRelease then PvPRelease() end; return end
+        if event == "GOSSIP_SHOW" and M.db.altGossip then AltGossip() end
+        if event == "MERCHANT_SHOW" then Repair(); SellJunk()
+        elseif event == "MERCHANT_CLOSED" then selling = false
+        elseif event == "LOOT_READY" then if M.db.fastLoot then FastLoot() end
+        elseif M.db.quests and not Paused() then
+            if event == "QUEST_DETAIL" then QuestDetail()
+            elseif event == "QUEST_PROGRESS" then QuestProgress()
+            elseif event == "QUEST_COMPLETE" then QuestComplete()
+            elseif event == "GOSSIP_SHOW" then Gossip()
+            elseif event == "QUEST_GREETING" then Greeting() end
+        end
+    end)
+end
 
 ---------------------------------------------------------------------------
 function M:BuildSettings(body, page)

@@ -45,60 +45,62 @@ local function CanInvite()
     return not IsInGroup() or UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
 end
 
-local ev = CreateFrame("Frame")
-for _, e in ipairs({ "DUEL_REQUESTED", "PARTY_INVITE_REQUEST",
-                     "BN_FRIEND_INVITE_ADDED", "QUEST_DETAIL", "CHAT_MSG_WHISPER", "CHAT_MSG_BN_WHISPER" }) do
-    pcall(ev.RegisterEvent, ev, e)          -- some events may not exist on every client
-end
-
-ev:SetScript("OnEvent", function(_, event, a1, a2, ...)
-    if not M.enabled then return end
-    local db = M.db
-
-    if event == "DUEL_REQUESTED" and db.blockDuels then
-        if not IsFriend(a1) then CancelDuel(); StaticPopup_Hide("DUEL_REQUESTED") end
-
-
-    elseif event == "PARTY_INVITE_REQUEST" then
-        local friend = IsFriend(a1)
-        if friend and db.acceptInvites then
-            AcceptGroup(); StaticPopup_Hide("PARTY_INVITE")
-        elseif not friend and db.blockInvites then
-            DeclineGroup(); StaticPopup_Hide("PARTY_INVITE")
-        end
-
-    elseif event == "BN_FRIEND_INVITE_ADDED" and db.blockFriendRequests then
-        if BNGetNumFriendInvites and BNGetFriendInviteInfo and BNDeclineFriendInvite then
-            for i = BNGetNumFriendInvites(), 1, -1 do
-                local id = BNGetFriendInviteInfo(i)
-                if id then BNDeclineFriendInvite(id) end
-            end
-        end
-
-    elseif event == "QUEST_DETAIL" and db.blockSharedQuests then
-        -- a quest shared by a player opens with that player as the "npc"
-        if UnitExists("npc") and UnitIsPlayer("npc") and not IsFriend(UnitName("npc")) then
-            DeclineQuest()
-        end
-
-    elseif (event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER") and db.keywordInvite then
-        local text, sender = a1, a2
-        if type(text) ~= "string" or IsSecret(text) or IsSecret(sender) then return end
-        if strtrim(text):lower() ~= db.keyword:lower() or not CanInvite() then return end
-        if event == "CHAT_MSG_BN_WHISPER" then
-            -- Battle.net whispers: invite the character they're playing
-            local bnetID = select(13, a1, a2, ...)          -- 13th argument = sender account ID
-            local acc = bnetID and C_BattleNet.GetAccountInfoByID(bnetID)
-            local game = acc and acc.gameAccountInfo
-            if game and game.characterName then
-                local name = game.realmName and (game.characterName .. "-" .. game.realmName) or game.characterName
-                C_PartyInfo.InviteUnit(name)
-            end
-        else
-            C_PartyInfo.InviteUnit(sender)
-        end
+function M:Setup()
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "DUEL_REQUESTED", "PARTY_INVITE_REQUEST",
+                         "BN_FRIEND_INVITE_ADDED", "QUEST_DETAIL", "CHAT_MSG_WHISPER", "CHAT_MSG_BN_WHISPER" }) do
+        pcall(ev.RegisterEvent, ev, e)          -- some events may not exist on every client
     end
-end)
+
+    ev:SetScript("OnEvent", function(_, event, a1, a2, ...)
+        if not M.enabled then return end
+        local db = M.db
+
+        if event == "DUEL_REQUESTED" and db.blockDuels then
+            if not IsFriend(a1) then CancelDuel(); StaticPopup_Hide("DUEL_REQUESTED") end
+
+
+        elseif event == "PARTY_INVITE_REQUEST" then
+            local friend = IsFriend(a1)
+            if friend and db.acceptInvites then
+                AcceptGroup(); StaticPopup_Hide("PARTY_INVITE")
+            elseif not friend and db.blockInvites then
+                DeclineGroup(); StaticPopup_Hide("PARTY_INVITE")
+            end
+
+        elseif event == "BN_FRIEND_INVITE_ADDED" and db.blockFriendRequests then
+            if BNGetNumFriendInvites and BNGetFriendInviteInfo and BNDeclineFriendInvite then
+                for i = BNGetNumFriendInvites(), 1, -1 do
+                    local id = BNGetFriendInviteInfo(i)
+                    if id then BNDeclineFriendInvite(id) end
+                end
+            end
+
+        elseif event == "QUEST_DETAIL" and db.blockSharedQuests then
+            -- a quest shared by a player opens with that player as the "npc"
+            if UnitExists("npc") and UnitIsPlayer("npc") and not IsFriend(UnitName("npc")) then
+                DeclineQuest()
+            end
+
+        elseif (event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER") and db.keywordInvite then
+            local text, sender = a1, a2
+            if type(text) ~= "string" or IsSecret(text) or IsSecret(sender) then return end
+            if strtrim(text):lower() ~= db.keyword:lower() or not CanInvite() then return end
+            if event == "CHAT_MSG_BN_WHISPER" then
+                -- Battle.net whispers: invite the character they're playing
+                local bnetID = select(13, a1, a2, ...)          -- 13th argument = sender account ID
+                local acc = bnetID and C_BattleNet.GetAccountInfoByID(bnetID)
+                local game = acc and acc.gameAccountInfo
+                if game and game.characterName then
+                    local name = game.realmName and (game.characterName .. "-" .. game.realmName) or game.characterName
+                    C_PartyInfo.InviteUnit(name)
+                end
+            else
+                C_PartyInfo.InviteUnit(sender)
+            end
+        end
+    end)
+end
 
 function M:BuildSettings(body, page)
     local db, checks, y = M.db, {}, 0

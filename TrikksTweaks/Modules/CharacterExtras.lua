@@ -97,9 +97,6 @@ local function UpdateVolume()
     vol:SetValue((tonumber(C_CVar.GetCVar("Sound_MasterVolume")) or 1) * 100)
 end
 
-if CharacterFrame then
-    CharacterFrame:HookScript("OnShow", function() UpdateDurability(); UpdateVolume() end)
-end
 
 ---------------------------------------------------------------------------
 -- Flight times: remember how long each route took, show it on the flight map
@@ -111,10 +108,6 @@ local function CurrentNode()
     end
 end
 
-hooksecurefunc("TakeTaxiNode", function(index)
-    local src, dest = CurrentNode(), TaxiNodeName(index)
-    if src and dest then flight = { key = src .. " > " .. dest, start = GetTime() } end
-end)
 
 local function AddFlightLine(index)
     if not (M.enabled and M.db.flightTimes) or not index then return end
@@ -127,10 +120,6 @@ local function AddFlightLine(index)
     GameTooltip:Show()
 end
 
--- classic-style flight map
-if type(TaxiNodeOnButtonEnter) == "function" then
-    hooksecurefunc("TaxiNodeOnButtonEnter", function(button) AddFlightLine(button:GetID()) end)
-end
 -- modern flight map (loads on demand)
 local flightMapHooked = false
 local function HookFlightMap()
@@ -155,9 +144,6 @@ local function ColorBar(bar, unit)
     if bar.SetStatusBarDesaturated then bar:SetStatusBarDesaturated(true) end
     bar:SetStatusBarColor(c.r, c.g, c.b)
 end
-if type(UnitFrameHealthBar_Update) == "function" then
-    hooksecurefunc("UnitFrameHealthBar_Update", function(bar, unit) ColorBar(bar, unit) end)
-end
 local function ColorAll()
     for unit, frame in pairs({ player = PlayerFrame, target = TargetFrame, focus = FocusFrame }) do
         local bar = frame and (frame.healthbar or (frame.GetHealthBar and frame:GetHealthBar()))
@@ -166,30 +152,6 @@ local function ColorAll()
 end
 
 ---------------------------------------------------------------------------
-local ev = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_INVENTORY_DURABILITY", "PLAYER_CONTROL_GAINED",
-                     "ADDON_LOADED", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "CVAR_UPDATE" }) do
-    ev:RegisterEvent(e)
-end
-ev:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_CONTROL_GAINED" then
-        -- landed: store how long the flight took
-        if flight and not UnitOnTaxi("player") then
-            local dur = GetTime() - flight.start
-            if dur > 5 then M.db.flights[flight.key] = math.floor(dur + 0.5) end
-            flight = nil
-        end
-    elseif event == "ADDON_LOADED" then
-        HookFlightMap()
-    elseif event == "UPDATE_INVENTORY_DURABILITY" then
-        UpdateDurability()
-    elseif event == "CVAR_UPDATE" then
-        if vol and vol:IsVisible() then UpdateVolume() end
-    else
-        if event == "PLAYER_ENTERING_WORLD" then HookFlightMap(); UpdateDurability() end
-        C_Timer.After(0, ColorAll)
-    end
-end)
 
 ---------------------------------------------------------------------------
 -- Item level and enchant / gem check on the gear slots (character + inspect)
@@ -227,19 +189,24 @@ local function Sockets(link)
     return n
 end
 
+local slotTexts = setmetatable({}, { __mode = "k" })   -- button -> { ilvl, mark } (not fields on Blizzard's buttons)
 local function SlotTexts(button)
-    if not button.ttIlvl then
-        button.ttIlvl = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-        button.ttIlvl:SetPoint("BOTTOM", 0, 2)
-        button.ttMark = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        button.ttMark:SetPoint("TOPLEFT", 2, -2)
-        button.ttMark:SetTextColor(1, 0.25, 0.25)
+    local t = slotTexts[button]
+    if not t then
+        local ilvl = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        ilvl:SetPoint("BOTTOM", 0, 2)
+        local mark = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        mark:SetPoint("TOPLEFT", 2, -2)
+        mark:SetTextColor(1, 0.25, 0.25)
+        t = { ilvl, mark }
+        slotTexts[button] = t
     end
-    return button.ttIlvl, button.ttMark
+    return t[1], t[2]
 end
 
 local function UpdateSlot(button, unit)
     if not button or not button.GetID then return end
+    if not M.enabled and not slotTexts[button] then return end   -- off and nothing shown: nothing to do
     local ilvlText, mark = SlotTexts(button)
     local db = M.db
     local link = unit and GetInventoryItemLink(unit, button:GetID())
@@ -275,9 +242,6 @@ local function UpdateInspectSlots()
         if b then UpdateSlot(b, M.db.inspect and unit or nil) end
     end
 end
-if type(PaperDollItemSlotButton_Update) == "function" then
-    hooksecurefunc("PaperDollItemSlotButton_Update", function(b) UpdateSlot(b, "player") end)
-end
 local inspectHooked = false
 local function HookInspect()
     if inspectHooked or type(InspectPaperDollItemSlotButton_Update) ~= "function" then return end
@@ -286,17 +250,62 @@ local function HookInspect()
         UpdateSlot(b, M.db.inspect and InspectFrame and InspectFrame.unit or nil)
     end)
 end
-local gearEv = CreateFrame("Frame")
-gearEv:RegisterEvent("ADDON_LOADED")
-gearEv:RegisterEvent("INSPECT_READY")
-gearEv:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
-gearEv:SetScript("OnEvent", function(_, event)
-    if event == "ADDON_LOADED" then HookInspect()
-    elseif not M.enabled then return     -- off: no gear rescans
-    elseif event == "INSPECT_READY" then C_Timer.After(0.1, UpdateInspectSlots)
-    else C_Timer.After(0.1, UpdateCharacterSlots) end
-end)
-HookInspect()
+
+-- Hooks and events only exist once the module has been switched on.
+function M:Setup()
+    if CharacterFrame then
+        CharacterFrame:HookScript("OnShow", function() UpdateDurability(); UpdateVolume() end)
+    end
+    hooksecurefunc("TakeTaxiNode", function(index)
+        local src, dest = CurrentNode(), TaxiNodeName(index)
+        if src and dest then flight = { key = src .. " > " .. dest, start = GetTime() } end
+    end)
+    -- classic-style flight map
+    if type(TaxiNodeOnButtonEnter) == "function" then
+        hooksecurefunc("TaxiNodeOnButtonEnter", function(button) AddFlightLine(button:GetID()) end)
+    end
+    if type(UnitFrameHealthBar_Update) == "function" then
+        hooksecurefunc("UnitFrameHealthBar_Update", function(bar, unit) ColorBar(bar, unit) end)
+    end
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_INVENTORY_DURABILITY", "PLAYER_CONTROL_GAINED",
+                         "ADDON_LOADED", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "CVAR_UPDATE" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_CONTROL_GAINED" then
+            -- landed: store how long the flight took
+            if flight and not UnitOnTaxi("player") then
+                local dur = GetTime() - flight.start
+                if dur > 5 then M.db.flights[flight.key] = math.floor(dur + 0.5) end
+                flight = nil
+            end
+        elseif event == "ADDON_LOADED" then
+            HookFlightMap()
+        elseif event == "UPDATE_INVENTORY_DURABILITY" then
+            UpdateDurability()
+        elseif event == "CVAR_UPDATE" then
+            if vol and vol:IsVisible() then UpdateVolume() end
+        else
+            if event == "PLAYER_ENTERING_WORLD" then HookFlightMap(); UpdateDurability() end
+            C_Timer.After(0, ColorAll)
+        end
+    end)
+    if type(PaperDollItemSlotButton_Update) == "function" then
+        hooksecurefunc("PaperDollItemSlotButton_Update", function(b) UpdateSlot(b, "player") end)
+    end
+    local gearEv = CreateFrame("Frame")
+    gearEv:RegisterEvent("ADDON_LOADED")
+    gearEv:RegisterEvent("INSPECT_READY")
+    gearEv:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+    gearEv:SetScript("OnEvent", function(_, event)
+        if event == "ADDON_LOADED" then HookInspect()
+        elseif not M.enabled then return     -- off: no gear rescans
+        elseif event == "INSPECT_READY" then C_Timer.After(0.1, UpdateInspectSlots)
+        else C_Timer.After(0.1, UpdateCharacterSlots) end
+    end)
+    HookInspect()
+end
 
 function M:OnEnable() UpdateDurability(); UpdateVolume(); ColorAll(); UpdateCharacterSlots() end
 function M:OnDisable() UpdateDurability(); UpdateVolume(); UpdateCharacterSlots() end
@@ -304,13 +313,13 @@ function M:OnDisable() UpdateDurability(); UpdateVolume(); UpdateCharacterSlots(
 function M:BuildSettings(body, page)
     local db, checks, cycles, y = M.db, {}, {}, 0
     local function Check(key, text, after)
-        local cb = TT.Check(body, text, function(v) db[key] = v; if after then after() end end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; if after and M.enabled then after() end end)
         cb:SetPoint("TOPLEFT", 2, -y)
         checks[key] = cb
         y = y + 24
     end
     local function Corner(key, after)
-        local c = TT.Cycle(body, 110, CORNERS, function() return db[key] end, function(v) db[key] = v; after() end)
+        local c = TT.Cycle(body, 110, CORNERS, function() return db[key] end, function(v) db[key] = v; if M.enabled then after() end end)
         c:SetPoint("TOPLEFT", 380, -(y - 24) + 3)
         cycles[#cycles + 1] = c
     end
@@ -329,7 +338,7 @@ function M:BuildSettings(body, page)
     -- which slots count as "should be enchanted": three columns of checkboxes
     for i, sd in ipairs(ENCHANT_SLOTS) do
         local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
-        local cb = TT.Check(body, sd[2], function(v) db.enchantSlots[sd[1]] = v or nil; UpdateCharacterSlots() end)
+        local cb = TT.Check(body, sd[2], function(v) db.enchantSlots[sd[1]] = v or nil; if M.enabled then UpdateCharacterSlots() end end)
         cb:SetPoint("TOPLEFT", 22 + col * 150, -(y + row * 22))
         checks["slot" .. sd[1]] = { SetChecked = function() cb:SetChecked(db.enchantSlots[sd[1]] and true or false) end }
     end

@@ -28,7 +28,12 @@ end
 ---------------------------------------------------------------------------
 -- Module registry
 ---------------------------------------------------------------------------
--- m = { title, desc, defaults = {...}, OnLoad, OnEnable, OnDisable, BuildSettings }
+-- m = { title, desc, defaults = {...}, OnLoad, Setup, OnEnable, OnDisable, BuildSettings }
+-- Setup runs once, the first time the module is switched on (at login if it's
+-- on, or later when you tick it). Everything that costs something - frames,
+-- hooks, tooltip / chat filters, event registrations - goes there, so a module
+-- that's off creates, hooks and listens to nothing. BuildSettings must work
+-- without Setup having run (settings pages are built for every module).
 -- m.addon / m.svName: which addon the module belongs to and which saved
 -- variable holds its settings (defaults: this addon / TrikksTweaksDB).
 function TT:RegisterModule(key, m)
@@ -51,11 +56,20 @@ function TT.SafeCall(m, fname, ...)
     return ok
 end
 
+-- Run Setup once (see the note at the top), then OnEnable.
+function TT.Start(m)
+    if not m.isSetUp then
+        m.isSetUp = true
+        TT.SafeCall(m, "Setup")
+    end
+    TT.SafeCall(m, "OnEnable")
+end
+
 function TT:SetEnabled(key, on)
     local m = self.modules[key]
     if not m or not m.db or m.enabled == on then return end
     m.enabled, m.db.enabled = on, on
-    TT.SafeCall(m, on and "OnEnable" or "OnDisable")
+    if on then TT.Start(m) else TT.SafeCall(m, "OnDisable") end
     if self.RefreshHub then self:RefreshHub() end
 end
 
@@ -711,7 +725,7 @@ local function InitModule(m)
     CopyDefaults(m.defaults or {}, db)
     m.db, m.enabled = db, db.enabled
     TT.SafeCall(m, "OnLoad")
-    if m.enabled then TT.SafeCall(m, "OnEnable") end
+    if m.enabled then TT.Start(m) end
 end
 
 local loader = CreateFrame("Frame")

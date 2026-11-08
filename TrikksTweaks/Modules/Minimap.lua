@@ -9,7 +9,7 @@ local M = TT:RegisterModule("Minimap", {
     desc = "Square minimap, stats line (location, FPS, ping, time, durability) and an addon button bin.",
     defaults = {
         square = true, wheelZoom = true,
-        stats = true, location = true, fps = true, latency = true, time = true, hour24 = true, durability = true,
+        stats = true, location = true, fps = false, latency = true, time = true, hour24 = true, durability = false,
         coords = true, clockInside = true,
         -- which side of the second row each stat sits on
         side = { fps = "LEFT", latency = "LEFT", coords = "RIGHT", durability = "RIGHT" },
@@ -85,18 +85,10 @@ end
 --   row 1:            time (centred)
 --   row 2:  [left group]          [right group]
 -- each stat on row 2 can go in the left or the right group.
-local stats = CreateFrame("Frame", nil, Minimap)
-stats:SetPoint("TOPLEFT", Minimap, "BOTTOMLEFT", 2, -3)
-stats:SetPoint("TOPRIGHT", Minimap, "BOTTOMRIGHT", -2, -3)
-stats:SetHeight(28)
-stats:Hide()
-local function Text(justify)
-    local t = stats:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    t:SetJustifyH(justify)
-    return t
-end
-local timeText, leftText, rightText = Text("CENTER"), Text("LEFT"), Text("RIGHT")
-local locFrame          -- created further down (the location text inside the map)
+-- All frames of this module are made in Setup (BuildFrames, near the end),
+-- the first time the module is switched on.
+local stats, timeText, leftText, rightText
+local locFrame, locText         -- the location text inside the map
 
 -- Place the rows; when the clock is off, row 2 moves up.
 local function LayoutStats()
@@ -133,14 +125,6 @@ local function BlizzardCoords()
     return MinimapCluster and MinimapCluster.MinimapContainer and MinimapCluster.MinimapContainer.PlayerCoords
 end
 
-locFrame = CreateFrame("Frame", nil, Minimap)
-locFrame:SetPoint("TOPLEFT", 2, -3); locFrame:SetPoint("TOPRIGHT", -2, -3)
-locFrame:SetHeight(14)
-locFrame:SetFrameLevel(Minimap:GetFrameLevel() + 3)
-locFrame:Hide()
-local locText = locFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-locText:SetPoint("CENTER")
-locText:SetShadowOffset(1, -1)
 
 local PVP_COLORS = {
     sanctuary = "68ccef", friendly = "33ff33", hostile = "ff3333",
@@ -166,10 +150,6 @@ end
 -- Durability only changes on these events, so it's worked out then instead of
 -- scanning 19 gear slots 4 times a second.
 local durability, durabilityDirty = nil, true
-local durEv = CreateFrame("Frame")
-durEv:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
-durEv:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
-durEv:SetScript("OnEvent", function() durabilityDirty = true end)
 
 local STAT_KEYS = { "fps", "latency", "coords", "durability" }
 local values, left, right = {}, {}, {}        -- reused every update (no new tables 4x a second)
@@ -231,22 +211,7 @@ end
 ---------------------------------------------------------------------------
 -- Button bin: addon minimap buttons -> one flyout
 ---------------------------------------------------------------------------
-local binBtn = CreateFrame("Button", nil, Minimap, "BackdropTemplate")
-binBtn:SetSize(16, 16)
-binBtn:SetPoint("BOTTOMRIGHT", -3, 3)
-binBtn:SetFrameLevel(Minimap:GetFrameLevel() + 4)
-TT.Flat(binBtn, { 0, 0, 0, 0.6 })
-local dots = binBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-dots:SetPoint("CENTER", 0, 3)
-dots:SetText("...")
-binBtn:Hide()
-
-local bin = CreateFrame("Frame", "TrikksTweaksButtonBin", UIParent, "BackdropTemplate")
-bin:SetFrameStrata("DIALOG")
-TT.Flat(bin, TT.C.bg, TT.C.border)
-bin:SetPoint("BOTTOMRIGHT", Minimap, "BOTTOMLEFT", -6, 0)
-bin:Hide()
-tinsert(UISpecialFrames, "TrikksTweaksButtonBin")
+local binBtn, bin
 
 local binned, laying = {}, false
 -- Blizzard's own minimap buttons are left alone.
@@ -302,16 +267,6 @@ local function Collect()
     Layout()
 end
 
-binBtn:SetScript("OnClick", function()
-    if bin:IsShown() then bin:Hide() else Collect(); bin:Show() end
-end)
-binBtn:SetScript("OnEnter", function(self)
-    self:SetBackdropBorderColor(unpack(TT.C.accent))
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:SetText("Addon buttons")
-    GameTooltip:Show()
-end)
-binBtn:SetScript("OnLeave", function(self) self:SetBackdropBorderColor(unpack(TT.C.border)); GameTooltip:Hide() end)
 
 ---------------------------------------------------------------------------
 -- Minimap elements: put them in a corner of the map, hide them, or leave them
@@ -336,8 +291,7 @@ local POS_TEXT = { TOPLEFT = "Top left", TOPRIGHT = "Top right", BOTTOMLEFT = "B
 
 -- Hidden things are parented to a frame that's never shown (more reliable than
 -- Hide(): Blizzard re-shows some of these frames by itself).
-local hiddenParent = CreateFrame("Frame")
-hiddenParent:Hide()
+local hiddenParent
 
 local placing, fights, fightReset = false, 0, 0
 local PlaceElements, PlaceZone
@@ -488,10 +442,10 @@ PlaceElements = function()
 end
 
 -- Mouseover: fade in-map elements in while the mouse is over the map.
-local fader = CreateFrame("Frame")
+local fader
 local fadeAlpha, acc, lastX, lastY, settled = 0, 0, nil, nil, false
 local GetCursorPosition = GetCursorPosition
-fader:SetScript("OnUpdate", function(_, elapsed)
+local function FaderUpdate(_, elapsed)
     acc = acc + elapsed
     if acc < 0.03 then return end
     local dt = acc
@@ -512,9 +466,7 @@ fader:SetScript("OnUpdate", function(_, elapsed)
             f:SetAlpha(cfg.mouseover and fadeAlpha or 1)
         end
     end
-end)
-fader:SetScript("OnShow", function() settled = false end)   -- re-apply after settings / loading screens
-fader:Hide()
+end
 
 ---------------------------------------------------------------------------
 local applied = false
@@ -534,9 +486,74 @@ local function ApplyAll()
     fader:Show()
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:SetScript("OnEvent", ApplyAll)
+
+function M:Setup()
+    stats = CreateFrame("Frame", nil, Minimap)
+    stats:SetPoint("TOPLEFT", Minimap, "BOTTOMLEFT", 2, -3)
+    stats:SetPoint("TOPRIGHT", Minimap, "BOTTOMRIGHT", -2, -3)
+    stats:SetHeight(28)
+    stats:Hide()
+    local function Text(justify)
+        local t = stats:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        t:SetJustifyH(justify)
+        return t
+    end
+    timeText, leftText, rightText = Text("CENTER"), Text("LEFT"), Text("RIGHT")
+
+    locFrame = CreateFrame("Frame", nil, Minimap)
+    locFrame:SetPoint("TOPLEFT", 2, -3); locFrame:SetPoint("TOPRIGHT", -2, -3)
+    locFrame:SetHeight(14)
+    locFrame:SetFrameLevel(Minimap:GetFrameLevel() + 3)
+    locFrame:Hide()
+    locText = locFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    locText:SetPoint("CENTER")
+    locText:SetShadowOffset(1, -1)
+
+    local durEv = CreateFrame("Frame")
+    durEv:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
+    durEv:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+    durEv:SetScript("OnEvent", function() durabilityDirty = true end)
+
+    binBtn = CreateFrame("Button", nil, Minimap, "BackdropTemplate")
+    binBtn:SetSize(16, 16)
+    binBtn:SetPoint("BOTTOMRIGHT", -3, 3)
+    binBtn:SetFrameLevel(Minimap:GetFrameLevel() + 4)
+    TT.Flat(binBtn, { 0, 0, 0, 0.6 })
+    local dots = binBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dots:SetPoint("CENTER", 0, 3)
+    dots:SetText("...")
+    binBtn:Hide()
+
+    bin = CreateFrame("Frame", "TrikksTweaksButtonBin", UIParent, "BackdropTemplate")
+    bin:SetFrameStrata("DIALOG")
+    TT.Flat(bin, TT.C.bg, TT.C.border)
+    bin:SetPoint("BOTTOMRIGHT", Minimap, "BOTTOMLEFT", -6, 0)
+    bin:Hide()
+    tinsert(UISpecialFrames, "TrikksTweaksButtonBin")
+
+    binBtn:SetScript("OnClick", function()
+        if bin:IsShown() then bin:Hide() else Collect(); bin:Show() end
+    end)
+    binBtn:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(unpack(TT.C.accent))
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Addon buttons")
+        GameTooltip:Show()
+    end)
+    binBtn:SetScript("OnLeave", function(self) self:SetBackdropBorderColor(unpack(TT.C.border)); GameTooltip:Hide() end)
+
+    hiddenParent = CreateFrame("Frame")
+    hiddenParent:Hide()
+
+    fader = CreateFrame("Frame")
+    fader:SetScript("OnUpdate", FaderUpdate)
+    fader:SetScript("OnShow", function() settled = false end)   -- re-apply after settings / loading screens
+    fader:Hide()
+
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:SetScript("OnEvent", ApplyAll)
+end
 
 function M:OnEnable() if IsLoggedIn() then ApplyAll() end end
 function M:OnDisable()
@@ -551,7 +568,7 @@ function M:BuildSettings(body, page)
         h:SetTextColor(unpack(TT.C.dim)); h:SetPoint("TOPLEFT", 0, -y); y = y + 20
     end
     local function Check(key, text, indent, after)
-        local cb = TT.Check(body, text, function(v) db[key] = v; if after then after(v) end end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; if after and M.enabled then after(v) end end)
         cb:SetPoint("TOPLEFT", 2 + (indent and 20 or 0), -y)
         checks[key] = cb
         y = y + 24

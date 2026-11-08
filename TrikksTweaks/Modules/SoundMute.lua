@@ -36,14 +36,16 @@ local function ApplyMutes()
     end
 end
 
-local ev = CreateFrame("Frame")
-ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:RegisterEvent("PLAYER_UPDATE_RESTING")
-ev:SetScript("OnEvent", function(_, event)
-    if not M.enabled then return end
-    ApplyEmotes()
-    if event == "PLAYER_ENTERING_WORLD" then ApplyMutes() end
-end)
+function M:Setup()
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("PLAYER_UPDATE_RESTING")
+    ev:SetScript("OnEvent", function(_, event)
+        if not M.enabled then return end
+        ApplyEmotes()
+        if event == "PLAYER_ENTERING_WORLD" then ApplyMutes() end
+    end)
+end
 
 function M:OnEnable() ApplyEmotes(); ApplyMutes() end
 function M:OnDisable() ApplyEmotes(); ApplyMutes() end

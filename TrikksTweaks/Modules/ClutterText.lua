@@ -10,12 +10,12 @@ local M = TT:RegisterModule("ClutterText", {
     defaults = { errors = true, errorsInCombatOnly = false, zoneText = true, portraitNumbers = true, raidLabels = true },
 })
 
-local hidden = CreateFrame("Frame")
-hidden:Hide()
+local hidden                     -- made in Setup
+local origParent = {}            -- kept here, not as a field on Blizzard's frames (taint)
 local function Stash(f, hide)
-    if not f then return end
-    f.ttParent = f.ttParent or f:GetParent()
-    f:SetParent(hide and hidden or f.ttParent)
+    if not f or not hidden then return end
+    origParent[f] = origParent[f] or f:GetParent()
+    f:SetParent(hide and hidden or origParent[f])
 end
 
 -- Error messages: UIErrorsFrame shows red errors from the UI_ERROR_MESSAGE event.
@@ -57,17 +57,21 @@ end
 
 local function ApplyAll() ApplyErrors(); ApplyZone(); ApplyPortraits(); ApplyRaidLabels() end
 
-local ev = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
-    ev:RegisterEvent(e)
+function M:Setup()
+    hidden = CreateFrame("Frame")
+    hidden:Hide()
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "GROUP_ROSTER_UPDATE" then C_Timer.After(0, ApplyRaidLabels)
+        elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+            -- combat state changes the "only in combat" error option (fired before/after the flag flips)
+            C_Timer.After(0, ApplyErrors)
+        else ApplyAll() end
+    end)
 end
-ev:SetScript("OnEvent", function(_, event)
-    if event == "GROUP_ROSTER_UPDATE" then C_Timer.After(0, ApplyRaidLabels)
-    elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
-        -- combat state changes the "only in combat" error option (fired before/after the flag flips)
-        C_Timer.After(0, ApplyErrors)
-    else ApplyAll() end
-end)
 
 function M:OnEnable() ApplyAll() end
 function M:OnDisable() ApplyAll() end
@@ -75,7 +79,7 @@ function M:OnDisable() ApplyAll() end
 function M:BuildSettings(body, page)
     local db, checks, y = M.db, {}, 0
     local function Check(key, text, indent)
-        local cb = TT.Check(body, text, function(v) db[key] = v; ApplyAll() end)
+        local cb = TT.Check(body, text, function(v) db[key] = v; if M.enabled then ApplyAll() end end)
         cb:SetPoint("TOPLEFT", 2 + (indent and 20 or 0), -y)
         checks[key] = cb
         y = y + 24

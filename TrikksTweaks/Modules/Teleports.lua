@@ -204,18 +204,19 @@ local function Queue()
     queued = true
     C_Timer.After(0.5, function() queued = false; Rebuild() end)
 end
-local ev = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "SPELLS_CHANGED", "BAG_UPDATE_DELAYED",
-                     "TOYS_UPDATED", "NEW_TOY_ADDED", "SPELL_UPDATE_COOLDOWN" }) do pcall(ev.RegisterEvent, ev, e) end
-ev:SetScript("OnEvent", function(_, event)
-    if event == "SPELL_UPDATE_COOLDOWN" then
-        if strip and strip:IsVisible() then UpdateCooldowns() end
-        return
-    end
-    if event == "PLAYER_LOGIN" then CreateStrip() end
-    if event == "PLAYER_REGEN_ENABLED" and not pending then return end
-    Queue()
-end)
+function M:Setup()
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "SPELLS_CHANGED", "BAG_UPDATE_DELAYED",
+                         "TOYS_UPDATED", "NEW_TOY_ADDED", "SPELL_UPDATE_COOLDOWN" }) do pcall(ev.RegisterEvent, ev, e) end
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "SPELL_UPDATE_COOLDOWN" then
+            if strip and strip:IsVisible() then UpdateCooldowns() end
+            return
+        end
+        if event == "PLAYER_REGEN_ENABLED" and not pending then return end
+        Queue()
+    end)
+end
 
 function M:OnEnable() CreateStrip(); Queue() end
 function M:OnDisable() Queue() end

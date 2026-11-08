@@ -92,12 +92,14 @@ local function NumberOptions()
         end
     end
 end
-if GossipFrame then
-    GossipFrame:HookScript("OnShow", function() C_Timer.After(0, NumberOptions) end)
-    if GossipFrame.Update then hooksecurefunc(GossipFrame, "Update", function() C_Timer.After(0, NumberOptions) end) end
-end
-if QuestFrameGreetingPanel then
-    QuestFrameGreetingPanel:HookScript("OnShow", function() C_Timer.After(0, NumberOptions) end)
+local function HookDialogs()
+    if GossipFrame then
+        GossipFrame:HookScript("OnShow", function() C_Timer.After(0, NumberOptions) end)
+        if GossipFrame.Update then hooksecurefunc(GossipFrame, "Update", function() C_Timer.After(0, NumberOptions) end) end
+    end
+    if QuestFrameGreetingPanel then
+        QuestFrameGreetingPanel:HookScript("OnShow", function() C_Timer.After(0, NumberOptions) end)
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -157,22 +159,29 @@ local function AnythingOpen()
         or (M.db.popups and StaticPopup1 and StaticPopup1:IsVisible())
 end
 
-local catcher = CreateFrame("Frame", nil, UIParent)
-catcher:EnableKeyboard(true)
-catcher:SetPropagateKeyboardInput(true)
-catcher:SetScript("OnKeyDown", function(self, key)
-    if InCombatLockdown() then return end                   -- can't change key handling in combat
-    local used = false
-    if M.enabled and AnythingOpen() and not GetCurrentKeyBoardFocus()       -- not while typing
-       and not IsShiftKeyDown() and not IsControlKeyDown() and not IsAltKeyDown() then
-        if key == M.db.key then
-            used = MainAction()
-        elseif M.db.numbers and DIGIT[key] then
-            used = NumberAction(DIGIT[key])
+local catcher                    -- made in Setup; hidden (gets no keys) while the module is off
+local function MakeCatcher()
+    catcher = CreateFrame("Frame", nil, UIParent)
+    catcher:EnableKeyboard(true)
+    catcher:SetPropagateKeyboardInput(true)
+    catcher:SetScript("OnKeyDown", function(self, key)
+        if InCombatLockdown() then return end                   -- can't change key handling in combat
+        local used = false
+        if M.enabled and AnythingOpen() and not GetCurrentKeyBoardFocus()       -- not while typing
+           and not IsShiftKeyDown() and not IsControlKeyDown() and not IsAltKeyDown() then
+            if key == M.db.key then
+                used = MainAction()
+            elseif M.db.numbers and DIGIT[key] then
+                used = NumberAction(DIGIT[key])
+            end
         end
-    end
-    self:SetPropagateKeyboardInput(not used)                -- false = the game doesn't also get this key
-end)
+        self:SetPropagateKeyboardInput(not used)                -- false = the game doesn't also get this key
+    end)
+end
+
+function M:Setup() HookDialogs(); MakeCatcher() end
+function M:OnEnable() catcher:Show() end
+function M:OnDisable() catcher:Hide() end
 
 ---------------------------------------------------------------------------
 function M:BuildSettings(body, page)

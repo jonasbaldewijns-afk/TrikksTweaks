@@ -139,7 +139,8 @@ local function OnModifiedClick(button)
     -- reached through two routes (see Setup): handle each click once
     if lastButton == button and lastTime == GetTime() then return end
     lastButton, lastTime = button, GetTime()
-    if not (MerchantFrame and MerchantFrame.selectedTab == 1) or not IsModifiedClick("SPLITSTACK") then return "not on the vendor's buy tab" end
+    if not (MerchantFrame and (MerchantFrame.selectedTab or 1) == 1) then return "not on the vendor's buy tab" end
+    if not IsModifiedClick("SPLITSTACK") then return "not a Shift-click" end
     local index = button:GetID()
     local info = C_MerchantFrame and C_MerchantFrame.GetItemInfo and C_MerchantFrame.GetItemInfo(index)
     if not info and GetMerchantItemInfo then             -- older API: plain return values
@@ -191,18 +192,46 @@ function M:Setup()
             if b:HasScript("OnModifiedClick") then b:HookScript("OnModifiedClick", Check) end
         end
     end
-    -- third route, independent of how the vendor buttons are named or wired:
-    -- Blizzard's split pop-up itself, opened for a button inside the vendor window
-    if StackSplitFrame and type(StackSplitFrame.OpenStackSplitFrame) == "function" then
-        hooksecurefunc(StackSplitFrame, "OpenStackSplitFrame", function(_, _, owner)
-            if not (owner and owner.GetID and MerchantFrame and MerchantFrame:IsShown()) then return end
-            local f = owner
-            while f and f ~= MerchantFrame do f = f:GetParent() end
-            if f == MerchantFrame then
-                local why = OnModifiedClick(owner)
-                if why and M.enabled then TT.Print("Bulk Buy: Blizzard's pop-up for this one: " .. why .. ".") end
+    -- third route, independent of how the vendor opens it: Blizzard's split
+    -- pop-up itself. Whatever function opened it, it shows: then we look at who
+    -- it was opened for (its owner, or the button under the mouse) and, if that
+    -- is a vendor item, swap it for ours.
+    local function InMerchant(f)
+        while f do
+            if f == MerchantFrame then return true end
+            f = f.GetParent and f:GetParent()
+        end
+    end
+    local function FromSplit()
+        if not (M.enabled and MerchantFrame and MerchantFrame:IsShown()) then return end
+        local owner = StackSplitFrame.owner
+        if not (owner and InMerchant(owner)) then
+            local foci = GetMouseFoci and GetMouseFoci() or { GetMouseFocus and GetMouseFocus() }
+            owner = nil
+            for _, f in ipairs(foci) do
+                -- the mouse can be on the icon/name inside the item button: go up to the button
+                while f and f ~= MerchantFrame do
+                    if f.GetID and f:GetID() > 0 and f.GetObjectType and f:GetObjectType() == "Button" and InMerchant(f) then owner = f; break end
+                    f = f.GetParent and f:GetParent()
+                end
+                if owner then break end
             end
-        end)
+        end
+        if not owner then return end
+        local why = OnModifiedClick(owner)
+        if why then TT.Print("Bulk Buy: Blizzard's pop-up for this one: " .. why .. ".") end
+    end
+    if StackSplitFrame then
+        StackSplitFrame:HookScript("OnShow", FromSplit)
+        -- shown already and just re-opened for another item: OnShow doesn't fire again
+        if type(StackSplitFrame.OpenStackSplitFrame) == "function" then
+            hooksecurefunc(StackSplitFrame, "OpenStackSplitFrame", function()
+                if StackSplitFrame:IsShown() then FromSplit() end
+            end)
+        end
+    end
+    if type(OpenStackSplitFrame) == "function" then            -- older clients: a global function
+        hooksecurefunc("OpenStackSplitFrame", function() if StackSplitFrame and StackSplitFrame:IsShown() then FromSplit() end end)
     end
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("MERCHANT_CLOSED")

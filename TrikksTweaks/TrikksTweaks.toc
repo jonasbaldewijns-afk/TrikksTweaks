@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Trikks Tweaks
 ## Notes: A bundle of opt-in UI and quality-of-life modules. /trikks
-## Version: 1.5
+## Version: 1.4.1
 ## SavedVariables: TrikksTweaksDB
 ## IconTexture: Interface\AddOns\TrikksTweaks\media\minimap
 ## AddonCompartmentFunc: TrikksTweaks_OnAddonCompartmentClick

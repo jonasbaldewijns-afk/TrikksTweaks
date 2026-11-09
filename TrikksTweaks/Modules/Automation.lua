@@ -45,34 +45,69 @@ local function JunkList()
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info and info.quality == 0 and not info.hasNoValue and not info.isLocked then
                 local price = select(11, C_Item.GetItemInfo(info.itemID)) or 0
-                list[#list + 1] = { bag = bag, slot = slot, value = price * (info.stackCount or 1) }
+                list[#list + 1] = { bag = bag, slot = slot, itemID = info.itemID, value = price * (info.stackCount or 1) }
             end
         end
     end
     return list
 end
 
+-- Blizzard's own "sell all junk" (the vendor's junk button, without its pop-up)
+local function SellAllBlizzard(count)
+    if not (C_MerchantFrame and C_MerchantFrame.SellAllJunkItems) then return false end
+    local ok = pcall(C_MerchantFrame.SellAllJunkItems)
+    if ok then TT.Print(string.format("sold %d junk item%s (Blizzard's sell-all)", count, count == 1 and "" or "s")) end
+    return ok
+end
+
+-- is the item we just sold gone from that slot? (still there = the sale was refused)
+local function Gone(item)
+    local info = C_Container.GetContainerItemInfo(item.bag, item.slot)
+    return not info or info.itemID ~= item.itemID
+end
+
 -- Sell one item every 0.15s (selling everything in one frame can fail).
 -- With "sell 12" on, stop after 12: the buyback tab only holds 12 items.
+-- After the first sale we check it really happened: if the game refused it
+-- (it can block addons from "using" bag items), we switch to Blizzard's own
+-- sell-all, and if that is blocked too we say so instead of failing silently.
 local function SellJunk()
     if not On("sellJunk") or selling then return end
     local list = JunkList()
     if #list == 0 then return end
     local limit = M.db.sell12 and math.min(12, #list) or #list
     selling = true
-    local i, total = 0, 0
+    local i, total, sold = 0, 0, 0
+    local function Done()
+        selling = false
+        if sold == 0 then return end
+        TT.Print(string.format("sold %d junk item%s for %s%s", sold, sold == 1 and "" or "s",
+            Money(total), (#list > limit) and " (more left: reopen the vendor)" or ""))
+    end
     local function Next()
         if not selling or not MerchantFrame:IsShown() then selling = false; return end
         i = i + 1
-        if i > limit then
-            selling = false
-            TT.Print(string.format("sold %d junk item%s for %s%s", limit, limit == 1 and "" or "s",
-                Money(total), (#list > limit) and " (more left: reopen the vendor)" or ""))
+        if i > limit then Done(); return end
+        local item = list[i]
+        if Gone(item) then C_Timer.After(0, Next); return end     -- moved or sold meanwhile
+        C_Container.UseContainerItem(item.bag, item.slot)    -- with a vendor open, "use" = sell
+        if i == 1 then
+            -- give the server a moment, then check the first sale went through
+            C_Timer.After(0.6, function()
+                if not selling or not MerchantFrame:IsShown() then selling = false; return end
+                if Gone(item) then
+                    sold, total = 1, item.value
+                    C_Timer.After(0.15, Next)
+                else
+                    selling = false
+                    if not SellAllBlizzard(#list) then
+                        TT.Print("couldn't sell junk: the game blocked it. Use the vendor's junk button.")
+                    end
+                end
+            end)
             return
         end
-        local item = list[i]
-        C_Container.UseContainerItem(item.bag, item.slot)    -- with a vendor open, "use" = sell
-        total = total + item.value
+        sold, total = sold + 1, total + item.value
         C_Timer.After(0.15, Next)
     end
     Next()

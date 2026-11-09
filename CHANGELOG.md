@@ -1,5 +1,10 @@
 # Trikks Tweaks
 
+## Unreleased
+
+### Changes
+- **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.
+
 ## 1.4.1
 
 ### New modules

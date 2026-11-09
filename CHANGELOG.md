@@ -1,5 +1,17 @@
 # Trikks Tweaks
 
+## 1.5
+
+### New modules
+Every module is off on a fresh install: turn on what you want in `/trikks`.
+
+- **Interact Glow**: ore, herbs, quest objects, chests, fishing spots and anything else you can interact with sparkle when you come near: little sparks over a soft glow, in a colour per type (grey when your skill is too low). Choose which types sparkle, the size, height, number of sparks, brightness and range. It turns on the game's soft-target settings for interactables and puts your own values back when you switch it off. Don't use it together with another glow addon such as Lueur.
+- **Poison Reminder** (rogues): an icon per weapon (main hand, off hand) when its poison is missing or about to run out. Click, Shift-click, Ctrl-click and Alt-click each put a poison of your choice on that weapon, using the highest rank in your bags. Can also stay on screen as a quick re-apply bar. Placed in Edit Mode.
+
+### Changes
+- **XP Bar** (was XP Bar Text): the bar stays blue, a pale band shows how far your rested XP reaches, and a gold band (plus `+12% from quests` in the text) shows the XP waiting in quests that are ready to hand in.
+- **Buff Reminders**: rogue poisons moved to the new Poison Reminder.
+
 ## 1.4
 
 ### New modules

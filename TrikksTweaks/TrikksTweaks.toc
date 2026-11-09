@@ -25,6 +25,7 @@ Modules\DarkMode.lua
 Modules\BarFade.lua
 Modules\Minimap.lua
 Modules\ClutterText.lua
+Modules\InteractGlow.lua
 Modules\XPBar.lua
 Modules\LootFeed.lua
 Modules\Tooltips.lua

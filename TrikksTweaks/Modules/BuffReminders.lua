@@ -90,13 +90,21 @@ local CLASS_BUFFS = {
     },
 }
 
--- your class's list plus your own reminders
+-- your class's list plus your own reminders. The list and "which of these
+-- spells do I know" are worked out once and kept: the icons are re-checked
+-- every second, and asking the game about every spell each time was the bulk
+-- of that work. ResetCache() throws both away when they can have changed
+-- (spells learned, loading screen, your own reminders edited).
+local entriesCache, knownCache = nil, {}
+local function ResetCache() entriesCache = nil; wipe(knownCache) end
 local function Entries()
+    if entriesCache then return entriesCache end
     local list = {}
     for _, e in ipairs(CLASS_BUFFS[CLASS] or {}) do list[#list + 1] = e end
     for _, name in ipairs(M.db and M.db.custom or {}) do
         list[#list + 1] = E("custom:" .. name, name, { name }, { name }, { always = true, custom = true })
     end
+    entriesCache = list
     return list
 end
 local function IsOn(e)
@@ -141,13 +149,18 @@ local function BagItems(e)
 end
 local isItem = {}                -- name -> true for names that came from the bags
 local function KnownSpells(e)
+    local cached = knownCache[e.key]
+    if cached then return cached end
     local list = {}
     for _, name in ipairs(e.spells) do
         if Known(name) then list[#list + 1] = name end
     end
     if e.items and #list == 0 then
+        -- bag items change without a spell event: looked up fresh every time
         for _, name in ipairs(BagItems(e)) do isItem[name] = true; list[#list + 1] = name end
+        return list
     end
+    knownCache[e.key] = list
     return list
 end
 -- the spell a click casts: your choice if you still know it, else the best one
@@ -167,10 +180,14 @@ end
 ---------------------------------------------------------------------------
 -- Who has what
 ---------------------------------------------------------------------------
--- buff name -> { seconds left, full duration } (math.huge / 0 for buffs without a duration)
-local function AuraTimes(unit)
-    local out = {}
-    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return out end
+-- t.left[buff name] = seconds left, t.dur[buff name] = full duration
+-- (math.huge / 0 for buffs without a duration). Fills the table it is given
+-- (emptied first), so the once-a-second check doesn't make new tables each time.
+local function AuraTimes(unit, t)
+    t = t or { left = {}, dur = {} }
+    local L, D = t.left, t.dur
+    wipe(L); wipe(D)
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return t end
     local now = GetTime()
     for i = 1, 255 do
         local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
@@ -181,16 +198,16 @@ local function AuraTimes(unit)
                 left = exp - now
                 if a.duration and not IsSecret(a.duration) then dur = a.duration end
             end
-            if not out[a.name] or left > out[a.name][1] then out[a.name] = { left, dur } end
+            if not L[a.name] or left > L[a.name] then L[a.name], D[a.name] = left, dur end
         end
     end
-    return out
+    return t
 end
-local function BestLeft(times, auras)
+local function BestLeft(t, auras)
     local best, dur
     for _, n in ipairs(auras) do
-        local t = times[n]
-        if t and (not best or t[1] > best) then best, dur = t[1], t[2] end
+        local l = t.left[n]
+        if l and (not best or l > best) then best, dur = l, t.dur[n] end
     end
     return best, dur or 0
 end
@@ -320,13 +337,15 @@ local function GetButton(i)
 end
 
 local shownBefore = 0
+local mineTimes, otherTimes = nil, {}      -- reused by every check
 local function Update()
     if not container or InCombatLockdown() then return end
     local db, show = M.db, {}
     local preview = M.enabled and (test or inEditMode)
     if (M.enabled and Allowed()) or preview then
-        local mine = AuraTimes("player")
-        local others
+        mineTimes = AuraTimes("player", mineTimes)
+        local mine = mineTimes
+        local others                       -- how many reachable group members were read
         local limit = db.minLeft * 60
         for _, e in ipairs(Entries()) do
             local known = KnownSpells(e)
@@ -341,13 +360,16 @@ local function Update()
                 local missing = 0
                 if e.group and db.group then
                     if not others then
-                        others = {}
+                        others = 0
                         for _, u in ipairs(GroupUnits()) do
-                            if Reachable(u) then others[#others + 1] = AuraTimes(u) end
+                            if Reachable(u) then
+                                others = others + 1
+                                otherTimes[others] = AuraTimes(u, otherTimes[others])
+                            end
                         end
                     end
-                    for _, t in ipairs(others) do
-                        local l, d = BestLeft(t, e.auras)
+                    for k = 1, others do
+                        local l, d = BestLeft(otherTimes[k], e.auras)
                         if Low(l, d, limit) then missing = missing + 1 end
                     end
                 end
@@ -369,41 +391,57 @@ local function Update()
     end
 
     -- lay out, growing from the centre
+    -- This runs every second. Size, place and the secure click settings of a
+    -- button are only set again when they changed (each one is a call into the
+    -- game's secure code); only the texts and the icon are refreshed every time.
     local n, size, gap = #show, db.size, db.spacing
     local total = n * size + math.max(0, n - 1) * gap
-    container:SetSize(math.max(size, total), size)
+    local layout = n .. ":" .. size .. ":" .. gap
+    if container.layout ~= layout then
+        container.layout = layout
+        container:SetSize(math.max(size, total), size)
+    end
     for i, d in ipairs(show) do
         local b = GetButton(i)
-        b:SetSize(size, size)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", container, "CENTER", -total / 2 + size / 2 + (i - 1) * (size + gap), 0)
+        if b.layout ~= layout then
+            b.layout = layout
+            b:SetSize(size, size)
+            b:ClearAllPoints()
+            b:SetPoint("CENTER", container, "CENTER", -total / 2 + size / 2 + (i - 1) * (size + gap), 0)
+        end
         b.icon:SetTexture(d.icon)
         b.count:SetText(d.missing > 0 and d.missing or "")
         b.time:SetText(d.left and FormatTime(d.left) or "")
         b.label, b.spell, b.item, b.slot, b.missing = d.e.label, d.spell, d.item, d.slot, d.missing
-        if d.item then
-            -- an item put on a weapon (classic poisons): Blizzard's secure button
-            -- uses it on the inventory slot in "target-slot" (16 / 17)
-            for _, k in ipairs({ "1", "2" }) do
-                b:SetAttribute("type" .. k, "item")
-                b:SetAttribute("item" .. k, d.item)
-                b:SetAttribute("target-slot" .. k, d.slot)
-                b:SetAttribute("spell" .. k, nil)
-                b:SetAttribute("unit" .. k, nil)
+        local action = (d.item and ("item:" .. d.item .. ":" .. d.slot)) or (d.spell and ("spell:" .. d.spell)) or "none"
+        if b.action ~= action then           -- same click as before: nothing to set
+            b.action = action
+            if d.item then
+                -- an item put on a weapon (classic poisons): Blizzard's secure button
+                -- uses it on the inventory slot in "target-slot" (16 / 17)
+                for _, k in ipairs({ "1", "2" }) do
+                    b:SetAttribute("type" .. k, "item")
+                    b:SetAttribute("item" .. k, d.item)
+                    b:SetAttribute("target-slot" .. k, d.slot)
+                    b:SetAttribute("spell" .. k, nil)
+                    b:SetAttribute("unit" .. k, nil)
+                end
+            else
+                b:SetAttribute("item1", nil); b:SetAttribute("item2", nil)
+                b:SetAttribute("target-slot1", nil); b:SetAttribute("target-slot2", nil)
+                b:SetAttribute("type1", d.spell and "spell" or nil)
+                b:SetAttribute("spell1", d.spell)
+                b:SetAttribute("unit1", "player")
+                b:SetAttribute("type2", d.spell and "spell" or nil)
+                b:SetAttribute("spell2", d.spell)
+                b:SetAttribute("unit2", "target")
             end
-        else
-            b:SetAttribute("item1", nil); b:SetAttribute("item2", nil)
-            b:SetAttribute("target-slot1", nil); b:SetAttribute("target-slot2", nil)
-            b:SetAttribute("type1", d.spell and "spell" or nil)
-            b:SetAttribute("spell1", d.spell)
-            b:SetAttribute("unit1", "player")
-            b:SetAttribute("type2", d.spell and "spell" or nil)
-            b:SetAttribute("spell2", d.spell)
-            b:SetAttribute("unit2", "target")
         end
-        b:Show()
+        if not b:IsShown() then b:Show() end
     end
-    for i = n + 1, #buttons do buttons[i]:Hide() end
+    for i = n + 1, #buttons do
+        if buttons[i]:IsShown() then buttons[i]:Hide() end
+    end
 
     if db.sound and not preview and n > shownBefore then
         pcall(PlaySound, SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959)
@@ -514,11 +552,13 @@ function M:Setup()
     ev = CreateFrame("Frame")
     ev:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_REGEN_ENABLED" and pendingApply then Apply() end
+        -- spells you know can have changed: look them up again
+        if event == "SPELLS_CHANGED" or event == "PLAYER_ENTERING_WORLD" then ResetCache() end
         Queue()
     end)
 end
 
-function M:OnEnable() Apply() end
+function M:OnEnable() ResetCache(); Apply() end
 function M:OnDisable() Apply() end
 
 ---------------------------------------------------------------------------
@@ -560,6 +600,7 @@ function M:BuildSettings(body, page)
         end
         for _, v in ipairs(db.custom) do if v == name then return end end
         db.custom[#db.custom + 1] = name
+        ResetCache()
         RefreshList(); Update()
     end
     addBox:SetScript("OnEnterPressed", AddCustom)
@@ -597,6 +638,7 @@ function M:BuildSettings(body, page)
                         if "custom:" .. v == row.e.key then table.remove(db.custom, k); break end
                     end
                     db.on[row.e.key], db.cast[row.e.key] = nil, nil
+                    ResetCache()
                     RefreshList(); Update()
                 end)
                 row.del:SetPoint("RIGHT", -4, 0)

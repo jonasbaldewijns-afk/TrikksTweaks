@@ -12,6 +12,10 @@
 - **Centre Tracked Buffs**: a vertical row uses the right padding.
 - Old `/trikks dump` output is dropped after a day (it made the settings file slow to load). `/trikks dump clear` empties it at once.
 
+### Performance
+- **Buff Reminders, Poison Reminder**: the once-a-second check no longer asks the game about every spell and no longer re-sets the icons' click settings each time: only when something changed.
+- **Dark Mode**: a target, focus, group or pet change only redoes the unit frames, and does far less work doing it.
+
 ### Changes
 - **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
 - **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.

@@ -39,18 +39,28 @@ local icons = {}
 ---------------------------------------------------------------------------
 -- Poisons you have
 ---------------------------------------------------------------------------
+-- is this poison a spell you know? Asked once per name and kept (the icons
+-- are re-checked every second); forgotten again when your spells change.
+local knownCache = {}
 local function Known(name)
-    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(name)
-    local id = info and info.spellID
-    if not id or IsSecret(id) then return nil end
-    if IsPlayerSpell and IsPlayerSpell(id) then return id end
-    if IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(id) then return id end
-    return nil
+    local v = knownCache[name]
+    if v == nil then
+        v = false
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(name)
+        local id = info and info.spellID
+        if id and not IsSecret(id) then
+            if (IsPlayerSpell and IsPlayerSpell(id))
+               or (IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(id)) then v = id end
+        end
+        knownCache[name] = v
+    end
+    return v or nil
 end
 
 -- base name -> best item name in your bags (highest required level = highest rank)
 local bagBest = {}
 local function ScanBags()
+    wipe(knownCache)                 -- runs on login, new spells and bag changes: a good moment to ask again
     wipe(bagBest)
     local bestLevel = {}
     for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
@@ -150,8 +160,17 @@ local function GetIcon(i)
     return b
 end
 
--- the four clicks of one icon (secure settings: out of combat only)
+-- the four clicks of one icon (secure settings: out of combat only).
+-- Only set again when one of them changed: this is called every second, and
+-- each setting is a call into the game's secure code (20 per icon).
 local function Bind(b, w)
+    local sig = tostring(w.slot)
+    for _, m in ipairs(MODS) do
+        local kind, name = Action(M.db[w.key][m[1]])
+        sig = sig .. "|" .. (kind or "-") .. ":" .. (name or "")
+    end
+    if b.sig == sig then return end
+    b.sig = sig
     for _, m in ipairs(MODS) do
         local p = m[1]
         local kind, name = Action(M.db[w.key][p])
@@ -184,21 +203,30 @@ local function Update()
     end
     local n, size, gap = #show, db.size, db.spacing
     local total = n * size + math.max(0, n - 1) * gap
-    container:SetSize(math.max(size, total), size)
+    local layout = n .. ":" .. size .. ":" .. gap          -- sizes and places: only when they changed
+    if container.layout ~= layout then
+        container.layout = layout
+        container:SetSize(math.max(size, total), size)
+    end
     for i, d in ipairs(show) do
         local b = GetIcon(i)
         b.weapon = d.w
-        b:SetSize(size, size)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", container, "CENTER", -total / 2 + size / 2 + (i - 1) * (size + gap), 0)
+        if b.layout ~= layout then
+            b.layout = layout
+            b:SetSize(size, size)
+            b:ClearAllPoints()
+            b:SetPoint("CENTER", container, "CENTER", -total / 2 + size / 2 + (i - 1) * (size + gap), 0)
+        end
         b.icon:SetTexture(Icon(db[d.w.key][""]) or GetInventoryItemTexture("player", d.w.slot) or 134400)
         b.icon:SetDesaturated(not d.low)                        -- "always show": grey while it's fine
         b.tag:SetText(d.w.slot == 16 and "MH" or "OH")
         b.time:SetText(d.left and FormatTime(d.left) or (d.low and "|cffff5555none|r" or ""))
         Bind(b, d.w)
-        b:Show()
+        if not b:IsShown() then b:Show() end
     end
-    for i = n + 1, #icons do icons[i]:Hide() end
+    for i = n + 1, #icons do
+        if icons[i]:IsShown() then icons[i]:Hide() end
+    end
     local lowCount = 0
     for _, d in ipairs(show) do if d.low then lowCount = lowCount + 1 end end
     if db.sound and not preview and lowCount > shownBefore then pcall(PlaySound, SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959) end

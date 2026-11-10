@@ -58,11 +58,21 @@ local TARGETS = {
     },
 }
 
+-- "A.B.C" is cut into its parts once and kept: the paths are walked on every
+-- target change, and cutting the text up each time made a lot of throwaway
+-- strings. The walk itself is redone every time (frames can appear later).
+local PARTS = {}
 local function Resolve(path)
+    local parts = PARTS[path]
+    if not parts then
+        parts = {}
+        for part in path:gmatch("[^%.]+") do parts[#parts + 1] = part end
+        PARTS[path] = parts
+    end
     local obj = _G
-    for part in path:gmatch("[^%.]+") do
+    for i = 1, #parts do
         if type(obj) ~= "table" then return nil end
-        obj = obj[part]
+        obj = obj[parts[i]]
     end
     return type(obj) == "table" and obj or nil
 end
@@ -73,14 +83,18 @@ local function Color() return M.db.brightness / 100 end
 -- kept here, not as fields on Blizzard's textures (taint)
 local busy, locked = nil, {}
 
-local function Darken(obj, on)
+local Darken
+-- every texture of a frame, without putting them in a new table first
+local function DarkenRegions(on, ...)
+    for i = 1, select("#", ...) do
+        local r = select(i, ...)
+        if r:GetObjectType() == "Texture" then Darken(r, on) end
+    end
+end
+Darken = function(obj, on)
     if obj.IsForbidden and obj:IsForbidden() then return end
     if obj.GetObjectType and obj:GetObjectType() ~= "Texture" then
-        if obj.GetRegions then
-            for _, r in ipairs({ obj:GetRegions() }) do
-                if r:GetObjectType() == "Texture" then Darken(r, on) end
-            end
-        end
+        if obj.GetRegions then DarkenRegions(on, obj:GetRegions()) end
         return
     end
     local c = on and Color() or 1
@@ -147,8 +161,21 @@ function M:Setup()
                          "GROUP_ROSTER_UPDATE", "UNIT_PET", "UNIT_CLASSIFICATION_CHANGED" }) do
         ev:RegisterEvent(e)
     end
-    ev:SetScript("OnEvent", function()
-        if M.enabled then C_Timer.After(0, ApplyAll) end   -- after Blizzard/BBF have updated
+    -- One frame later (after Blizzard / BBF have updated), once per frame.
+    -- A loading screen redoes everything; target, focus, group and pet changes
+    -- only touch the unit frames, so only those are redone.
+    local pendingAll, pendingUnits = false, false
+    local function Run()
+        local all = pendingAll
+        pendingAll, pendingUnits = false, false
+        if not M.enabled then return end
+        if all then ApplyAll() else ApplyCategory("unitframes") end
+    end
+    ev:SetScript("OnEvent", function(_, event)
+        if not M.enabled then return end
+        local waiting = pendingAll or pendingUnits
+        if event == "PLAYER_ENTERING_WORLD" then pendingAll = true else pendingUnits = true end
+        if not waiting then C_Timer.After(0, Run) end
     end)
 end
 

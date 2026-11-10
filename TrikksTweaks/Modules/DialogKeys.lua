@@ -175,7 +175,7 @@ local function MakeCatcher()
                 used = NumberAction(DIGIT[key])
             end
         end
-        self:SetPropagateKeyboardInput(not used)                -- false = the game doesn't also get this key
+        TT.KeyUsed(self, used)                                  -- used = the game doesn't also get this key
     end)
 end
 

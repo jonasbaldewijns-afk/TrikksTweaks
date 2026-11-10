@@ -26,6 +26,36 @@ function TT.SpellInfo(spell)
 end
 
 ---------------------------------------------------------------------------
+-- Key catchers (Dialog Keys, Delete Junk, IDs & Links)
+---------------------------------------------------------------------------
+-- A key catcher sees every key press and tells the game per key whether it may
+-- also have it (SetPropagateKeyboardInput). That switch can't be changed during
+-- combat. So after a key was used ("don't pass it on") it must not stay that
+-- way: if a fight started before your next key press, every key would be
+-- swallowed until the fight ended. Two safeguards: it goes back to "pass on"
+-- one frame after the key was used, and again the moment combat starts (the
+-- game still allows the change at that point).
+local catchers, catcherEv = {}, nil
+function TT.KeyUsed(frame, used)
+    if not catchers[frame] then
+        catchers[frame] = true
+        if not catcherEv then
+            catcherEv = CreateFrame("Frame")
+            catcherEv:RegisterEvent("PLAYER_REGEN_DISABLED")
+            catcherEv:SetScript("OnEvent", function()
+                for f in pairs(catchers) do pcall(f.SetPropagateKeyboardInput, f, true) end
+            end)
+        end
+    end
+    frame:SetPropagateKeyboardInput(not used)
+    if used then
+        C_Timer.After(0, function()
+            if not InCombatLockdown() then frame:SetPropagateKeyboardInput(true) end
+        end)
+    end
+end
+
+---------------------------------------------------------------------------
 -- Module registry
 ---------------------------------------------------------------------------
 -- m = { title, desc, defaults = {...}, OnLoad, Setup, OnEnable, OnDisable, BuildSettings }

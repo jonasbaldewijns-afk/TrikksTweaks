@@ -219,18 +219,24 @@ local IGNORE = { MiniMapTracking = true, GameTimeFrame = true, MinimapZoomIn = t
                  QueueStatusButton = true, MiniMapMailFrame = true, TimeManagerClockButton = true,
                  ExpansionLandingPageMinimapButton = true, AddonCompartmentFrame = true }
 
+local binOrder = {}                  -- reused: the buttons to show, sorted by name
+local function ByName(a, b) return (a:GetName() or "") < (b:GetName() or "") end
 local function Layout()
     laying = true
     local size, gap, perRow = 30, 4, 5
-    local i = 0
+    -- always the same order (a set has none: the buttons used to shuffle)
+    wipe(binOrder)
     for btn in pairs(binned) do
-        if btn:IsShown() or btn.ttWasShown then
-            local row, col = math.floor(i / perRow), i % perRow
-            btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", bin, "TOPLEFT", 6 + col * (size + gap), -6 - row * (size + gap))
-            btn:SetAlpha(1)
-            i = i + 1
-        end
+        if btn:IsShown() or btn.ttWasShown then binOrder[#binOrder + 1] = btn end
+    end
+    table.sort(binOrder, ByName)
+    local i = 0
+    for _, btn in ipairs(binOrder) do
+        local row, col = math.floor(i / perRow), i % perRow
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", bin, "TOPLEFT", 6 + col * (size + gap), -6 - row * (size + gap))
+        btn:SetAlpha(1)
+        i = i + 1
     end
     local cols = math.max(1, math.min(i, perRow))
     local rows = math.max(1, math.ceil(i / perRow))
@@ -594,7 +600,7 @@ function M:BuildSettings(body, page)
     local SIDES = { { "LEFT", "Left" }, { "RIGHT", "Right" } }
     local sideButtons = {}
     local function Stat(key, text)
-        Check(key, text, true)
+        Check(key, text, true, ApplyStats)
         local c = TT.Cycle(body, 60, SIDES, function() return db.side[key] end,
             function(v) db.side[key] = v end)
         c:SetPoint("TOPLEFT", 330, -(y - 24) + 3)

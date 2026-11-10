@@ -58,7 +58,9 @@ local function Recenter()
         if scale <= 0 then scale = 1 end
         lastScale, lastSize = scale, size
     end
-    local gap = (container.childXPadding or 0) / scale
+    local pad = (horizontal and container.childXPadding) or (not horizontal and container.childYPadding)
+        or container.childXPadding or 0
+    local gap = pad / scale
     local total = n * size + (n - 1) * gap
     for i, f in ipairs(shown) do
         local offset = -total / 2 + size / 2 + (i - 1) * (size + gap)

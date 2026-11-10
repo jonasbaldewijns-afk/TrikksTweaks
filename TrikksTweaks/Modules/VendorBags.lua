@@ -100,9 +100,16 @@ local function UpdateFree()
     if not btn then return end
     local on = M.enabled and M.db.freeSlots
     -- newer clients have this built in as a setting
-    if C_CVar.GetCVar("displayFreeBagSlots") ~= nil then
-        local want = on and "1" or "0"
-        if C_CVar.GetCVar("displayFreeBagSlots") ~= want then C_CVar.SetCVar("displayFreeBagSlots", want) end
+    local cur = C_CVar.GetCVar("displayFreeBagSlots")
+    if cur ~= nil then
+        if on then
+            -- remember what it was, so switching off puts it back
+            if M.db.prevFree == nil then M.db.prevFree = cur end
+            if cur ~= "1" then C_CVar.SetCVar("displayFreeBagSlots", "1") end
+        elseif M.db.prevFree ~= nil then
+            if cur ~= M.db.prevFree then C_CVar.SetCVar("displayFreeBagSlots", M.db.prevFree) end
+            M.db.prevFree = nil
+        end
         return
     end
     if not freeText then

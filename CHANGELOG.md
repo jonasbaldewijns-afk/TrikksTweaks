@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixes
+- **Dialog Keys, Delete Junk, IDs & Links**: your keyboard could stop responding for a whole fight if combat started right after one of these used a key (Space on a quest, Backspace, the copy key). Fixed.
+- **Export / import**: the string no longer contains your chat history, or the notes modules keep of your own game settings (to put them back when switched off). Importing a string keeps yours.
+- **Mail to Alts**: no more error when typing a name on its settings page while the module is off.
+- **Minimap**: ticking FPS / latency / coordinates / durability shows the stats row right away. The addon buttons in the button bin keep the same order.
+- **Vendor & Bags**: switching it off puts Blizzard's "free bag slots" setting back to what you had.
+- **Hide Blizzard Frames**: does far less work while addons load at login.
+- **Centre Tracked Buffs**: a vertical row uses the right padding.
+- Old `/trikks dump` output is dropped after a day (it made the settings file slow to load). `/trikks dump clear` empties it at once.
+
 ### Changes
 - **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
 - **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.

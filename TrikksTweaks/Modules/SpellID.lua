@@ -153,10 +153,10 @@ local function MakeWatchers()
         if InCombatLockdown() then return end              -- propagation is locked in combat
         if M.enabled and M.db.copyEnabled and key == M.db.copyKey and currentID
            and GameTooltip:IsShown() and CopyModDown() and not (copyBox and copyBox:IsShown()) then
-            self:SetPropagateKeyboardInput(false)
+            TT.KeyUsed(self, true)                         -- the game doesn't also get this key
             ShowCopy(currentID)
         else
-            self:SetPropagateKeyboardInput(true)
+            TT.KeyUsed(self, false)
         end
     end)
 

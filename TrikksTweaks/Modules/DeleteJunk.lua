@@ -127,7 +127,7 @@ function M:Setup()
         if M.enabled and not GetCurrentKeyBoardFocus() and not IsModifier(key) and Combo(key) == M.db.key then
             used = DeleteCheapest()
         end
-        self:SetPropagateKeyboardInput(not used)                -- false = the game doesn't also get this key
+        TT.KeyUsed(self, used)                                  -- used = the game doesn't also get this key
     end)
 
     local ev = CreateFrame("Frame")

@@ -331,6 +331,7 @@ local function BuildPanel()
 end
 
 UpdateButtons = function()
+    if not ev then return end        -- never switched on: no buttons exist (the settings page calls this too)
     local open = M.enabled and MailFrame and MailFrame:IsShown()
     local x = 0
     for _, key in ipairs(KEYS) do

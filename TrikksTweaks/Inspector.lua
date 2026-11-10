@@ -1,9 +1,25 @@
 -- Trikks Tweaks: frame inspector (developer tool, not a module)
 -- /trikks dump            -> dumps the window under your mouse
 -- /trikks dump FrameName  -> dumps a frame by its global name
+-- /trikks dump clear      -> throws all dumps away
 -- The result is stored in TrikksTweaksDB.dumps and written to disk on /reload
 -- or logout (WTF\Account\<account>\SavedVariables\TrikksTweaks.lua).
+-- Dumps are big (hundreds of KB) and the game loads the whole settings file at
+-- every login, so dumps older than a day are dropped at login.
 local _, TT = ...
+local KEEP_SECONDS = 24 * 60 * 60
+
+local cleaner = CreateFrame("Frame")
+cleaner:RegisterEvent("PLAYER_LOGIN")
+cleaner:SetScript("OnEvent", function()
+    local db = TrikksTweaksDB
+    if not (db and db.dumps) then return end
+    local times, now = db.dumpTimes or {}, time()
+    for name in pairs(db.dumps) do
+        if not times[name] or now - times[name] > KEEP_SECONDS then db.dumps[name], times[name] = nil, nil end
+    end
+    if not next(db.dumps) then db.dumps, db.dumpTimes = nil, nil else db.dumpTimes = times end
+end)
 local MAX_NODES, MAX_DEPTH, MAX_KIDS = 4000, 12, 40
 
 local function S(v)                            -- safe tostring (secret values)
@@ -27,6 +43,11 @@ local function Describe(obj, parent, idx)
 end
 
 function TT.Dump(target)
+    if target and target:lower() == "clear" then
+        TrikksTweaksDB.dumps, TrikksTweaksDB.dumpTimes = nil, nil
+        TT.Print("dumps cleared.")
+        return
+    end
     local frame
     if target and target ~= "" then
         -- a global name, or a path like WorldMapFrame.BorderFrame
@@ -79,5 +100,7 @@ function TT.Dump(target)
     local name = frame:GetName() or (target ~= "" and target) or "unnamed"
     TrikksTweaksDB.dumps = TrikksTweaksDB.dumps or {}
     TrikksTweaksDB.dumps[name] = lines
-    TT.Print(string.format("dumped %s (%d lines). /reload to save it to disk.", name, #lines))
+    TrikksTweaksDB.dumpTimes = TrikksTweaksDB.dumpTimes or {}
+    TrikksTweaksDB.dumpTimes[name] = time()
+    TT.Print(string.format("dumped %s (%d lines). /reload to save it to disk (kept for a day; /trikks dump clear).", name, #lines))
 end

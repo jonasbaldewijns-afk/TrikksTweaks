@@ -27,10 +27,34 @@ local function Copy(t, depth)
     return out
 end
 
+-- Things in a module's settings that are yours alone and never go into a
+-- string: your chat history, and the notes modules keep of what a game setting
+-- was before they changed it (to put it back when switched off). Someone who
+-- imported those would get YOUR old values "restored" on their account.
+local PRIVATE = {
+    Chat = { "saved" }, XPBar = { "prevCVar" }, InteractGlow = { "saved" }, CameraVisuals = { "orig" },
+    SoundMute = { "origEmotes" }, VendorBags = { "prevFree" },
+}
+local function StripPrivate(modules)
+    for key, fields in pairs(PRIVATE) do
+        local m = modules[key]
+        if type(m) == "table" then for _, f in ipairs(fields) do m[f] = nil end end
+    end
+    return modules
+end
+
 -- Importing replaces only the modules that are in the string; anything else
 -- you have (like saved Setups, when they weren't exported) stays as it is.
+-- Your own private parts (see above) of a replaced module are kept.
 local function Merge(into, from)
-    for k, v in pairs(from) do into[k] = v end
+    StripPrivate(from)                       -- strings made by older versions still carry them
+    for k, v in pairs(from) do
+        local fields, old = PRIVATE[k], into[k]
+        if fields and type(old) == "table" and type(v) == "table" then
+            for _, f in ipairs(fields) do v[f] = old[f] end
+        end
+        into[k] = v
+    end
     return into
 end
 -- the parts that can go into a string
@@ -57,6 +81,7 @@ local function Export(choice)
                 -- leave out what is personal or bulky: saved character setups unless asked, dev dumps
                 if c.Setups and not choice.setups then c.Setups = nil end
             end
+            StripPrivate(c)
             data[p.key] = c
         end
     end

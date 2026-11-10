@@ -71,7 +71,11 @@ function M:Setup()
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("PLAYER_ENTERING_WORLD")
     ev:RegisterEvent("ADDON_LOADED")               -- the talking head loads on demand
-    ev:SetScript("OnEvent", function() if M.enabled then Apply() end end)
+    ev:SetScript("OnEvent", function(_, event)
+        if not M.enabled then return end
+        -- an addon finished loading (dozens at login): only the talking head can be new
+        if event == "ADDON_LOADED" then HookTalkingHead() else Apply() end
+    end)
 end
 
 StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {

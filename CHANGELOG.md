@@ -1,6 +1,6 @@
 # Trikks Tweaks
 
-## 1.4.1
+## 1.5
 
 ### New modules
 Every module is off on a fresh install: turn on what you want in `/trikks`.

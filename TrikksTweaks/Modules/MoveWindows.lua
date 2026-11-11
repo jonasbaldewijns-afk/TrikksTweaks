@@ -26,6 +26,13 @@ local FRAMES = {
     "CurrencyTransferMenu", "CooldownViewerSettings", "ItemTextFrame", "PetStableFrame",
     "TabardFrame", "GuildRegistrarFrame", "ContainerFrameCombinedBags", "SplashFrame",
     "RecruitAFriendRewardsFrame", "RecruitAFriendRecruitmentFrame", "CatalogShopFrame", "LootFrame",
+    "LFGParentFrame",
+}
+
+-- Windows that are an empty holder with full-size pages inside: the mouse never
+-- reaches the holder itself, so dragging one of its pages moves the holder.
+local GRIPS = {
+    LFGParentFrame = { "LFGListingFrame", "LFGBrowseFrame", "LFGWhoListFrame" },
 }
 
 -- The four windows you had moved with EnhanceQoL, copied from its settings.
@@ -65,19 +72,25 @@ local function Hook(name)
     hooked[f] = true
     f:SetMovable(true)
     f:SetClampedToScreen(true)
-    if not f:IsMouseEnabled() then f:EnableMouse(true) end
-    f:RegisterForDrag("LeftButton")
-    f:HookScript("OnDragStart", function(self)
-        if M.enabled and ModDown() and CanTouch(self) then self:StartMoving(); moving[self] = true end
-    end)
-    f:HookScript("OnDragStop", function(self)
-        if not moving[self] then return end
-        moving[self] = nil
-        self:StopMovingOrSizing()
-        self:SetUserPlaced(false)               -- we remember it, not WoW's layout cache
-        local point, _, relPoint, x, y = self:GetPoint(1)
-        M.db.positions[self:GetName()] = { point, relPoint, x, y }
-    end)
+    -- dragging "grip" moves the window f (grip = the window itself, or one of its pages)
+    local function Grip(grip)
+        if not grip or (grip.IsForbidden and grip:IsForbidden()) then return end
+        if not grip:IsMouseEnabled() then grip:EnableMouse(true) end
+        grip:RegisterForDrag("LeftButton")
+        grip:HookScript("OnDragStart", function()
+            if M.enabled and ModDown() and CanTouch(f) then f:StartMoving(); moving[f] = true end
+        end)
+        grip:HookScript("OnDragStop", function()
+            if not moving[f] then return end
+            moving[f] = nil
+            f:StopMovingOrSizing()
+            f:SetUserPlaced(false)                  -- we remember it, not WoW's layout cache
+            local point, _, relPoint, x, y = f:GetPoint(1)
+            M.db.positions[f:GetName()] = { point, relPoint, x, y }
+        end)
+    end
+    Grip(f)
+    for _, grip in ipairs(GRIPS[name] or {}) do Grip(_G[grip]) end
     -- Blizzard positions windows when they open: put ours back right after.
     f:HookScript("OnShow", function(self) C_Timer.After(0, function() Restore(self) end) end)
 end

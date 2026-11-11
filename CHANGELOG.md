@@ -11,6 +11,7 @@ Every module is off on a fresh install: turn on what you want in `/trikks`.
 ### Changes
 - **XP Bar** (was XP Bar Text): the bar stays blue, a pale band shows how far your rested XP reaches, and a gold band (plus `+12% from quests` in the text) shows the XP waiting in quests that are ready to hand in.
 - **Buff Reminders**: rogue poisons moved to the new Poison Reminder.
+- **Movable Windows**: the Looking For Group window can be moved too.
 - Every "press a key" button in the settings now works the same: click it, press the key; Esc or a second click cancels.
 - **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
 - **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.

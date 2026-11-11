@@ -13,7 +13,7 @@ Every module is off on a fresh install: turn on what you want in `/trikks`.
 - **Buff Reminders**: rogue poisons moved to the new Poison Reminder.
 - **Movable Windows**: the Looking For Group window can be moved too.
 - Every "press a key" button in the settings now works the same: click it, press the key; Esc or a second click cancels.
-- **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
+- **Bulk Buy**: now opens for ordinary vendor items. It was leaving them all to Blizzard's one-stack pop-up, because the game marks every vendor item here as non-refundable. It also says in chat why, when it does leave an item to Blizzard.
 - **Automation**: selling grey items no longer depends on Blizzard's vendor window already being on screen, and a problem with auto repair can't stop it. It also checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.
 
 ### Fixes

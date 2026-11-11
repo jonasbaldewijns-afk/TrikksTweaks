@@ -1,6 +1,19 @@
 # Trikks Tweaks
 
-## Unreleased
+## 1.4.1
+
+### New modules
+Every module is off on a fresh install: turn on what you want in `/trikks`.
+
+- **Interact Glow**: ore, herbs, quest objects, chests, fishing spots and anything else you can interact with sparkle when you come near: little sparks over a soft glow, in a colour per type (grey when your skill is too low). Choose which types sparkle, the size, height, number of sparks, brightness and range. It turns on the game's soft-target settings for interactables and puts your own values back when you switch it off. Don't use it together with another glow addon such as Lueur.
+- **Poison Reminder** (rogues): an icon per weapon (main hand, off hand) when its poison is missing or about to run out. Click, Shift-click, Ctrl-click and Alt-click each put a poison of your choice on that weapon, using the highest rank in your bags. Can also stay on screen as a quick re-apply bar. Placed in Edit Mode.
+
+### Changes
+- **XP Bar** (was XP Bar Text): the bar stays blue, a pale band shows how far your rested XP reaches, and a gold band (plus `+12% from quests` in the text) shows the XP waiting in quests that are ready to hand in.
+- **Buff Reminders**: rogue poisons moved to the new Poison Reminder.
+- Every "press a key" button in the settings now works the same: click it, press the key; Esc or a second click cancels.
+- **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
+- **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.
 
 ### Fixes
 - **Dialog Keys, Delete Junk, IDs & Links**: your keyboard could stop responding for a whole fight if combat started right after one of these used a key (Space on a quest, Backspace, the copy key). Fixed.
@@ -15,23 +28,6 @@
 ### Performance
 - **Buff Reminders, Poison Reminder**: the once-a-second check no longer asks the game about every spell and no longer re-sets the icons' click settings each time: only when something changed.
 - **Dark Mode**: a target, focus, group or pet change only redoes the unit frames, and does far less work doing it.
-
-### Changes
-- Every "press a key" button in the settings now works the same: click it, press the key; Esc or a second click cancels.
-- **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
-- **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.
-
-## 1.4.1
-
-### New modules
-Every module is off on a fresh install: turn on what you want in `/trikks`.
-
-- **Interact Glow**: ore, herbs, quest objects, chests, fishing spots and anything else you can interact with sparkle when you come near: little sparks over a soft glow, in a colour per type (grey when your skill is too low). Choose which types sparkle, the size, height, number of sparks, brightness and range. It turns on the game's soft-target settings for interactables and puts your own values back when you switch it off. Don't use it together with another glow addon such as Lueur.
-- **Poison Reminder** (rogues): an icon per weapon (main hand, off hand) when its poison is missing or about to run out. Click, Shift-click, Ctrl-click and Alt-click each put a poison of your choice on that weapon, using the highest rank in your bags. Can also stay on screen as a quick re-apply bar. Placed in Edit Mode.
-
-### Changes
-- **XP Bar** (was XP Bar Text): the bar stays blue, a pale band shows how far your rested XP reaches, and a gold band (plus `+12% from quests` in the text) shows the XP waiting in quests that are ready to hand in.
-- **Buff Reminders**: rogue poisons moved to the new Poison Reminder.
 
 ## 1.4
 

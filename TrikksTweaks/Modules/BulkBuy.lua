@@ -133,14 +133,10 @@ local function MakeWindow()
 end
 
 -- Shift-click on a vendor item: ours instead of Blizzard's (gold-priced items only)
-local lastButton, lastTime
-local function OnModifiedClick(button)
-    if not M.enabled or buying then return end
-    -- reached through two routes (see Setup): handle each click once
-    if lastButton == button and lastTime == GetTime() then return end
-    lastButton, lastTime = button, GetTime()
+local function Open(button, fromPopup)
     if not (MerchantFrame and (MerchantFrame.selectedTab or 1) == 1) then return "not on the vendor's buy tab" end
-    if not IsModifiedClick("SPLITSTACK") then return "not a Shift-click" end
+    -- (Blizzard's pop-up is already open: no need to ask about Shift again, you may have let go)
+    if not fromPopup and not IsModifiedClick("SPLITSTACK") then return "not a Shift-click" end
     local index = button:GetID()
     local info = C_MerchantFrame and C_MerchantFrame.GetItemInfo and C_MerchantFrame.GetItemInfo(index)
     if not info and GetMerchantItemInfo then             -- older API: plain return values
@@ -177,20 +173,41 @@ local function OnModifiedClick(button)
     Refresh()
 end
 
+-- A Shift-click reaches us through several routes (see Setup): each click is
+-- handled once. Whatever happens is said in chat, also an error in our own
+-- code: without that, a failure just looks like "Blizzard's pop-up again".
+local lastButton, lastTime
+local function OnModifiedClick(button, from)
+    if not M.enabled or buying then return end
+    if lastButton == button and lastTime and GetTime() - lastTime < 0.3 then return end
+    lastButton, lastTime = button, GetTime()
+    local ok, why = pcall(Open, button, from == "popup")
+    if not ok then
+        TT.Print("Bulk Buy hit an error: " .. tostring(why))
+    elseif why then
+        TT.Print("Bulk Buy: Blizzard's pop-up for this one: " .. why .. ".")
+    end
+end
+
 function M:Setup()
     -- Two routes to the Shift-click, because clients wire it differently:
     -- the global function (retail calls it by name on every click) and the
     -- item buttons' own click scripts (where the function was bound at load).
-    if type(MerchantItemButton_OnModifiedClick) == "function" then
-        hooksecurefunc("MerchantItemButton_OnModifiedClick", OnModifiedClick)
+    -- Every hook is set on its own (Try): if one can't be set on this client,
+    -- the others still are, and chat says which one failed.
+    local function Try(what, fn)
+        local ok, err = pcall(fn)
+        if not ok then TT.Print("Bulk Buy: couldn't hook " .. what .. ": " .. tostring(err)) end
     end
+    Try("the vendor's Shift-click", function()
+        if type(MerchantItemButton_OnModifiedClick) == "function" then
+            hooksecurefunc("MerchantItemButton_OnModifiedClick", OnModifiedClick)
+        end
+    end)
+    local function Check(btn) if IsModifiedClick("SPLITSTACK") then OnModifiedClick(btn) end end
     for i = 1, 12 do
         local b = _G["MerchantItem" .. i .. "ItemButton"]
-        if b then
-            local function Check(btn) if IsModifiedClick("SPLITSTACK") then OnModifiedClick(btn) end end
-            b:HookScript("OnClick", Check)
-            if b:HasScript("OnModifiedClick") then b:HookScript("OnModifiedClick", Check) end
-        end
+        if b then Try("item button " .. i, function() b:HookScript("OnClick", Check) end) end
     end
     -- third route, independent of how the vendor opens it: Blizzard's split
     -- pop-up itself. Whatever function opened it, it shows: then we look at who
@@ -217,21 +234,22 @@ function M:Setup()
                 if owner then break end
             end
         end
-        if not owner then return end
-        local why = OnModifiedClick(owner)
-        if why then TT.Print("Bulk Buy: Blizzard's pop-up for this one: " .. why .. ".") end
-    end
-    if StackSplitFrame then
-        StackSplitFrame:HookScript("OnShow", FromSplit)
-        -- shown already and just re-opened for another item: OnShow doesn't fire again
-        if type(StackSplitFrame.OpenStackSplitFrame) == "function" then
-            hooksecurefunc(StackSplitFrame, "OpenStackSplitFrame", function()
-                if StackSplitFrame:IsShown() then FromSplit() end
-            end)
+        if not owner then
+            TT.Print("Bulk Buy: couldn't tell which vendor item the pop-up is for.")
+            return
         end
+        OnModifiedClick(owner, "popup")
     end
-    if type(OpenStackSplitFrame) == "function" then            -- older clients: a global function
-        hooksecurefunc("OpenStackSplitFrame", function() if StackSplitFrame and StackSplitFrame:IsShown() then FromSplit() end end)
+    -- one frame later: Blizzard is still filling the pop-up in while it shows
+    local function Later() C_Timer.After(0, function() if StackSplitFrame:IsShown() then FromSplit() end end) end
+    if StackSplitFrame then
+        Try("the pop-up", function() StackSplitFrame:HookScript("OnShow", Later) end)
+        -- shown already and just re-opened for another item: OnShow doesn't fire again
+        Try("the pop-up's opener", function()
+            if type(StackSplitFrame.OpenStackSplitFrame) == "function" then
+                hooksecurefunc(StackSplitFrame, "OpenStackSplitFrame", Later)
+            end
+        end)
     end
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("MERCHANT_CLOSED")

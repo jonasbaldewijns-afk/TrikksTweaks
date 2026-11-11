@@ -6,7 +6,7 @@
 -- BuyMerchantItem(slot, amount) with at most one stack per call. So this
 -- pop-up buys in steps of one stack, a moment apart, until the amount is done.
 -- Items that cost tokens / currency, or that Blizzard asks to confirm
--- (non-refundable, very expensive), keep Blizzard's own pop-up and warnings.
+-- (very expensive), keep Blizzard's own pop-up and warnings.
 local _, TT = ...
 local C = TT.C
 local M = TT:RegisterModule("BulkBuy", {
@@ -146,7 +146,9 @@ local function Open(button, fromPopup)
     end
     if not info then return "no item info for slot " .. tostring(index) end
     if info.hasExtendedCost then return "it costs tokens or currency" end
-    if button.showNonrefundablePrompt then return "it isn't refundable" end
+    -- (Not checked: Blizzard's "non-refundable" flag. For an item with a plain gold
+    -- price below the "very expensive" limit Blizzard itself buys without asking,
+    -- and on this client every ordinary vendor item carries that flag.)
     if not info.price or info.price <= 0 then return "it has no gold price" end
     if MERCHANT_HIGH_PRICE_COST and info.price >= MERCHANT_HIGH_PRICE_COST then return "it's very expensive (Blizzard confirms those)" end
     local itemID = GetMerchantItemID and GetMerchantItemID(index)
@@ -268,7 +270,7 @@ function M:BuildSettings(body)
         "Shift-click an item at a vendor: type any amount (or +1 stack / Max) and press Enter.\n" ..
         "It buys one stack at a time, a quarter second apart, and stops if you close the vendor.\n" ..
         "Max = what you can afford, what fits in your bags and what the vendor has.\n\n" ..
-        "Items that cost tokens or currency, and ones Blizzard asks you to confirm (non-\n" ..
-        "refundable, very expensive), keep Blizzard's own pop-up.", "GameFontHighlightSmall")
+        "Items that cost tokens or currency, and very expensive ones (Blizzard asks you to\n" ..
+        "confirm those), keep Blizzard's own pop-up.", "GameFontHighlightSmall")
     help:SetPoint("TOPLEFT", 2, 0)
 end

@@ -14,7 +14,7 @@ Every module is off on a fresh install: turn on what you want in `/trikks`.
 - **Movable Windows**: the Looking For Group window can be moved too.
 - Every "press a key" button in the settings now works the same: click it, press the key; Esc or a second click cancels.
 - **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
-- **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.
+- **Automation**: selling grey items no longer depends on Blizzard's vendor window already being on screen, and a problem with auto repair can't stop it. It also checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.
 
 ### Fixes
 - **Dialog Keys, Delete Junk, IDs & Links**: your keyboard could stop responding for a whole fight if combat started right after one of these used a key (Space on a quest, Backspace, the copy key). Fixed.

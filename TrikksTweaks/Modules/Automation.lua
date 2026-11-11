@@ -20,6 +20,11 @@ local function Money(c) return GetCoinTextureString and GetCoinTextureString(c) 
 -- Vendor: repair + sell junk
 ---------------------------------------------------------------------------
 local selling = false
+-- Is a vendor open? Kept from the game's own events (MERCHANT_SHOW / CLOSED),
+-- not asked from Blizzard's vendor window: if that window isn't on screen yet
+-- at the moment the vendor opens, selling would stop before it began, without
+-- a word.
+local merchantOpen = false
 
 local function Repair()
     if not On("repair") or not CanMerchantRepair() then return end
@@ -85,7 +90,7 @@ local function SellJunk()
             Money(total), (#list > limit) and " (more left: reopen the vendor)" or ""))
     end
     local function Next()
-        if not selling or not MerchantFrame:IsShown() then selling = false; return end
+        if not selling or not merchantOpen then selling = false; return end
         i = i + 1
         if i > limit then Done(); return end
         local item = list[i]
@@ -94,7 +99,7 @@ local function SellJunk()
         if i == 1 then
             -- give the server a moment, then check the first sale went through
             C_Timer.After(0.6, function()
-                if not selling or not MerchantFrame:IsShown() then selling = false; return end
+                if not selling or not merchantOpen then selling = false; return end
                 if Gone(item) then
                     sold, total = 1, item.value
                     C_Timer.After(0.15, Next)
@@ -228,8 +233,14 @@ function M:Setup()
         if event == "RESURRECT_REQUEST" then if M.db.resurrect then Resurrect(arg1) end; return end
         if event == "PLAYER_DEAD" then if M.db.pvpRelease then PvPRelease() end; return end
         if event == "GOSSIP_SHOW" and M.db.altGossip then AltGossip() end
-        if event == "MERCHANT_SHOW" then Repair(); SellJunk()
-        elseif event == "MERCHANT_CLOSED" then selling = false
+        if event == "MERCHANT_SHOW" then
+            merchantOpen = true
+            -- each on its own, so a problem with repairing can't stop the selling
+            local ok, err = pcall(Repair)
+            if not ok then geterrorhandler()("Trikks Tweaks repair: " .. tostring(err)) end
+            -- a moment later: the vendor and your bags are ready then
+            C_Timer.After(0.2, function() if merchantOpen then SellJunk() end end)
+        elseif event == "MERCHANT_CLOSED" then merchantOpen, selling = false, false
         elseif event == "LOOT_READY" then if M.db.fastLoot then FastLoot() end
         elseif M.db.quests and not Paused() then
             if event == "QUEST_DETAIL" then QuestDetail()

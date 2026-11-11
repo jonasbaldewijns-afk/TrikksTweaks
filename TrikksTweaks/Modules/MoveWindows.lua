@@ -56,6 +56,8 @@ local function Restore(f)
 end
 
 local hooked = {}
+-- windows being dragged by us right now (our own table: no field on Blizzard's frame)
+local moving = {}
 local function Hook(name)
     local f = _G[name]
     if not f or hooked[f] or (f.IsForbidden and f:IsForbidden()) or not f.SetMovable then return end
@@ -66,11 +68,11 @@ local function Hook(name)
     if not f:IsMouseEnabled() then f:EnableMouse(true) end
     f:RegisterForDrag("LeftButton")
     f:HookScript("OnDragStart", function(self)
-        if M.enabled and ModDown() and CanTouch(self) then self:StartMoving(); self.ttMoving = true end
+        if M.enabled and ModDown() and CanTouch(self) then self:StartMoving(); moving[self] = true end
     end)
     f:HookScript("OnDragStop", function(self)
-        if not self.ttMoving then return end
-        self.ttMoving = nil
+        if not moving[self] then return end
+        moving[self] = nil
         self:StopMovingOrSizing()
         self:SetUserPlaced(false)               -- we remember it, not WoW's layout cache
         local point, _, relPoint, x, y = self:GetPoint(1)

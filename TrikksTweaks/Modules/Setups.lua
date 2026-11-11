@@ -171,13 +171,6 @@ local function SaveSetup(name)
     TT.Print("saved setup '" .. name .. "'.")
 end
 
-StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
-    text = "%s\n\nReload your UI now?",
-    button1 = RELOADUI or "Reload", button2 = LATER or "Later",
-    OnAccept = function() C_UI.Reload() end,
-    timeout = 0, whileDead = true, hideOnEscape = true,
-}
-
 local function ApplySetup(name)
     local setup = M.db.setups[name]
     if not setup then return end
@@ -190,7 +183,7 @@ local function ApplySetup(name)
             if not ok then TT.Print(p.label .. " failed: " .. tostring(err)) end
         end
     end
-    StaticPopup_Show("TRIKKSTWEAKS_RELOAD", "Setup '" .. name .. "' applied.\nA reload loads the right addons.")
+    TT.AskReload("Setup '" .. name .. "' applied.\nA reload loads the right addons.")
 end
 
 StaticPopupDialogs["TRIKKSTWEAKS_DELETE_SETUP"] = {

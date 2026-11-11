@@ -150,20 +150,9 @@ function M:BuildSettings(body, page)
 
     local kl = TT.Label(body, "Key:")
     kl:SetPoint("TOPLEFT", 4, -y - 4)
-    local keyBtn = TT.Button(body, "", 160, nil)
+    local keyBtn = TT.KeyButton(body, 160, function() return db.key end, function(v) db.key = v end, { combo = Combo })
     keyBtn:SetPoint("TOPLEFT", 120, -y)
-    keyBtn:SetScript("OnClick", function(self)
-        self:SetText("Press a key...")
-        self:EnableKeyboard(true)
-        self:SetPropagateKeyboardInput(false)
-    end)
-    keyBtn:SetScript("OnKeyDown", function(self, key)
-        if IsModifier(key) then return end                 -- wait for the real key
-        if key ~= "ESCAPE" then db.key = Combo(key) end
-        self:EnableKeyboard(false)
-        self:SetText(db.key)
-    end)
-    refreshers[#refreshers + 1] = function() keyBtn:SetText(db.key) end
+    refreshers[#refreshers + 1] = keyBtn.Refresh
     y = y + 32
 
     local cl = TT.Label(body, "Cheapest by:")

@@ -267,20 +267,8 @@ function M:BuildSettings(body, page)
 
     local kl = TT.Label(body, "Copy key:")
     kl:SetPoint("TOPLEFT", copyCB, "BOTTOMLEFT", 4, -12)
-    local keyBtn = TT.Button(body, "", 120, nil)
+    local keyBtn = TT.KeyButton(body, 120, function() return M.db.copyKey end, function(v) M.db.copyKey = v end)
     keyBtn:SetPoint("LEFT", kl, "RIGHT", 10, 0)
-    local function RefreshKey() keyBtn:SetText(M.db.copyKey) end
-    keyBtn:SetScript("OnClick", function(self)
-        self:SetText("Press a key...")
-        self:EnableKeyboard(true)
-        self:SetPropagateKeyboardInput(false)
-    end)
-    keyBtn:SetScript("OnKeyDown", function(self, key)
-        if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then return end
-        if key ~= "ESCAPE" then M.db.copyKey = key end
-        self:EnableKeyboard(false)
-        RefreshKey()
-    end)
 
     local ql = TT.Check(body, "Wowhead links for quests (right-click a quest, the Wowhead button\n on quest windows, or /wh <quest name>)", function(v) M.db.questLinks = v end)
     ql:SetPoint("TOPLEFT", kl, "BOTTOMLEFT", -4, -24)
@@ -298,7 +286,7 @@ function M:BuildSettings(body, page)
     end
 
     page.OnPageShow = function()
-        Refresh(); copyCB:SetChecked(M.db.copyEnabled); RefreshKey(); ql:SetChecked(M.db.questLinks)
+        Refresh(); copyCB:SetChecked(M.db.copyEnabled); keyBtn.Refresh(); ql:SetChecked(M.db.questLinks)
         for k, cb in pairs(idChecks) do cb:SetChecked(M.db[k]) end
     end
 end

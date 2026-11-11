@@ -20,7 +20,7 @@ local M = TT:RegisterModule("BuffReminders", {
     },
 })
 local DEFAULT_POS = { point = "CENTER", x = 0, y = 120 }
-local test, inEditMode, currentLayout = false, false, nil
+local test, mover = false, nil              -- mover: the Edit Mode handle (TT.EditModeFrame)
 
 ---------------------------------------------------------------------------
 -- The buffs per class
@@ -28,11 +28,9 @@ local test, inEditMode, currentLayout = false, false, nil
 -- spells = what a click casts (best first; the first one you know is used),
 -- auras  = buff names that count as "has it" (defaults to the spells).
 -- group  = also count party/raid members missing it, off = off by default,
--- weapon = a weapon enchant (poison, imbue) also counts: true = both weapons
---          (the weaker one counts), 16 = main hand only, 17 = off hand only,
--- items  = also usable as items from your bags (classic poisons: an item you
---          put on a weapon; any rank, matched by the start of the name),
--- always = remind even if none of the spells is known (e.g. poisons are items).
+-- weapon = a weapon enchant (imbue) also counts, on every weapon you hold
+--          (the weaker one counts),
+-- always = remind even if none of the spells is known (your own reminders).
 local function E(key, label, spells, auras, opts)
     local e = { key = key, label = label, spells = spells, auras = auras or spells }
     for k, v in pairs(opts or {}) do e[k] = v end
@@ -130,35 +128,12 @@ local function Known(name)
     if IsSpellKnown and IsSpellKnown(id) then return id end
     return nil
 end
--- items in your bags whose name starts with one of the entry's names
--- ("Instant Poison" finds "Instant Poison II"), each name once
-local function BagItems(e)
-    local list, seen = {}, {}
-    for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
-        for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
-            local info = C_Container.GetContainerItemInfo(bag, slot)
-            local name = info and info.itemID and C_Item.GetItemNameByID(info.itemID)
-            if name and not IsSecret(name) and not seen[name] then
-                for _, base in ipairs(e.spells) do
-                    if name:sub(1, #base) == base then seen[name] = true; list[#list + 1] = name; break end
-                end
-            end
-        end
-    end
-    return list
-end
-local isItem = {}                -- name -> true for names that came from the bags
 local function KnownSpells(e)
     local cached = knownCache[e.key]
     if cached then return cached end
     local list = {}
     for _, name in ipairs(e.spells) do
         if Known(name) then list[#list + 1] = name end
-    end
-    if e.items and #list == 0 then
-        -- bag items change without a spell event: looked up fresh every time
-        for _, name in ipairs(BagItems(e)) do isItem[name] = true; list[#list + 1] = name end
-        return list
     end
     knownCache[e.key] = list
     return list
@@ -227,16 +202,11 @@ local function OffhandWeapon()
     local classID = select(6, (C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant)(id))
     return classID == 2
 end
--- seconds left on the weapon enchant (nil = missing): slot 16 / 17 for one
--- weapon, anything else = the weaker of the weapons you hold
-local function WeaponLeft(slot)
+-- seconds left on the weapon enchant (nil = missing): the weaker of the
+-- weapons you hold
+local function WeaponLeft()
     local hasMain, mainMs, _, _, hasOff, offMs = GetWeaponEnchantInfo()
-    if slot == 17 then
-        if not OffhandWeapon() then return math.huge end
-        return hasOff and (offMs or 0) / 1000 or nil
-    end
     if not GetInventoryItemID("player", 16) then return math.huge end   -- no weapon: nothing to remind
-    if slot == 16 then return hasMain and (mainMs or 0) / 1000 or nil end
     if not hasMain then return nil end
     local left = (mainMs or 0) / 1000
     if OffhandWeapon() then
@@ -285,12 +255,7 @@ end
 ---------------------------------------------------------------------------
 local container                 -- made in Setup: nothing exists while the module is off
 
-local function Position()
-    if not container then return end
-    local p = currentLayout and M.db.layouts[currentLayout] or DEFAULT_POS
-    container:ClearAllPoints()
-    container:SetPoint(p.point, UIParent, p.point, p.x, p.y)
-end
+local function Position() if mover then mover.Position() end end
 
 local function FormatTime(s)
     if s >= 60 then return string.format("%d:%02d", math.floor(s / 60), math.floor(s % 60)) end
@@ -303,9 +268,7 @@ local function OnEnter(self)
     if self.missing and self.missing > 0 then
         GameTooltip:AddLine(self.missing .. " in your group " .. (self.missing == 1 and "is" or "are") .. " missing it", 1, 0.82, 0)
     end
-    if self.item then
-        GameTooltip:AddLine("Click: put " .. self.item .. " on your " .. (self.slot == 17 and "off hand" or "main hand"), 0.7, 0.7, 0.7)
-    elseif self.spell then
+    if self.spell then
         GameTooltip:AddLine("Click: cast " .. self.spell .. " on yourself", 0.7, 0.7, 0.7)
         GameTooltip:AddLine("Right-click: on your target", 0.7, 0.7, 0.7)
     end
@@ -341,7 +304,7 @@ local mineTimes, otherTimes = nil, {}      -- reused by every check
 local function Update()
     if not container or InCombatLockdown() then return end
     local db, show = M.db, {}
-    local preview = M.enabled and (test or inEditMode)
+    local preview = M.enabled and (test or (mover and mover.editing))
     if (M.enabled and Allowed()) or preview then
         mineTimes = AuraTimes("player", mineTimes)
         local mine = mineTimes
@@ -349,11 +312,10 @@ local function Update()
         local limit = db.minLeft * 60
         for _, e in ipairs(Entries()) do
             local known = KnownSpells(e)
-            local skip = e.weapon == 17 and not OffhandWeapon()          -- no off-hand weapon
-            if not skip and IsOn(e) and (#known > 0 or e.always) then
+            if IsOn(e) and (#known > 0 or e.always) then
                 local left, dur = BestLeft(mine, e.auras)
                 if e.weapon then
-                    local w = WeaponLeft(e.weapon)
+                    local w = WeaponLeft()
                     if w and (not left or w > left) then left, dur = w, 0 end
                 end
                 local selfLow = Low(left, dur, limit)
@@ -375,15 +337,11 @@ local function Update()
                 end
                 if selfLow or missing > 0 or preview then
                     local spell = CastSpell(e, known)
-                    local item = spell and isItem[spell] and spell or nil
-                    if item then spell = nil end
-                    local slot = (e.weapon == 17) and 17 or 16
-                    local itemIcon = item and C_Item.GetItemIconByID(C_Item.GetItemInfoInstant(item) or 0)
                     show[#show + 1] = {
-                        e = e, spell = spell, item = item, slot = slot, missing = missing,
+                        e = e, spell = spell, missing = missing,
                         left = (left and left < math.huge and selfLow) and left or nil,
-                        icon = (spell and SpellIcon(spell)) or itemIcon
-                            or (e.weapon and GetInventoryItemTexture("player", slot)) or 134400,
+                        icon = (spell and SpellIcon(spell))
+                            or (e.weapon and GetInventoryItemTexture("player", 16)) or 134400,
                     }
                 end
             end
@@ -412,30 +370,16 @@ local function Update()
         b.icon:SetTexture(d.icon)
         b.count:SetText(d.missing > 0 and d.missing or "")
         b.time:SetText(d.left and FormatTime(d.left) or "")
-        b.label, b.spell, b.item, b.slot, b.missing = d.e.label, d.spell, d.item, d.slot, d.missing
-        local action = (d.item and ("item:" .. d.item .. ":" .. d.slot)) or (d.spell and ("spell:" .. d.spell)) or "none"
+        b.label, b.spell, b.missing = d.e.label, d.spell, d.missing
+        local action = d.spell or "none"
         if b.action ~= action then           -- same click as before: nothing to set
             b.action = action
-            if d.item then
-                -- an item put on a weapon (classic poisons): Blizzard's secure button
-                -- uses it on the inventory slot in "target-slot" (16 / 17)
-                for _, k in ipairs({ "1", "2" }) do
-                    b:SetAttribute("type" .. k, "item")
-                    b:SetAttribute("item" .. k, d.item)
-                    b:SetAttribute("target-slot" .. k, d.slot)
-                    b:SetAttribute("spell" .. k, nil)
-                    b:SetAttribute("unit" .. k, nil)
-                end
-            else
-                b:SetAttribute("item1", nil); b:SetAttribute("item2", nil)
-                b:SetAttribute("target-slot1", nil); b:SetAttribute("target-slot2", nil)
-                b:SetAttribute("type1", d.spell and "spell" or nil)
-                b:SetAttribute("spell1", d.spell)
-                b:SetAttribute("unit1", "player")
-                b:SetAttribute("type2", d.spell and "spell" or nil)
-                b:SetAttribute("spell2", d.spell)
-                b:SetAttribute("unit2", "target")
-            end
+            b:SetAttribute("type1", d.spell and "spell" or nil)
+            b:SetAttribute("spell1", d.spell)
+            b:SetAttribute("unit1", "player")
+            b:SetAttribute("type2", d.spell and "spell" or nil)
+            b:SetAttribute("spell2", d.spell)
+            b:SetAttribute("unit2", "target")
         end
         if not b:IsShown() then b:Show() end
     end
@@ -452,32 +396,10 @@ end
 ---------------------------------------------------------------------------
 -- On / off, Edit Mode
 ---------------------------------------------------------------------------
-local registered = false
 local function RegisterEditMode()
-    local LEM = LibStub and LibStub("LibEditMode", true)
-    if registered or not LEM then return end
-    registered = true
-    LEM:AddFrame(container, function(frame, layoutName)
-        -- keep it anchored by its centre, so the row grows evenly both ways
-        local cx, cy = frame:GetCenter()
-        local ux, uy = UIParent:GetCenter()
-        local es, ues = frame:GetEffectiveScale(), UIParent:GetEffectiveScale()
-        local x, y = (cx * es - ux * ues) / es, (cy * es - uy * ues) / es
-        M.db.layouts[layoutName] = { point = "CENTER", x = x, y = y }
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
-    end, DEFAULT_POS, "Buff Reminders")
-    LEM:RegisterCallback("layout", function(layoutName) currentLayout = layoutName; Position() end)
-    LEM:RegisterCallback("enter", function() inEditMode = true; Update() end)
-    LEM:RegisterCallback("exit", function() inEditMode = false; Update() end)
-    LEM:RegisterCallback("rename", function(old, new)
-        M.db.layouts[new], M.db.layouts[old] = M.db.layouts[old], nil
-        if currentLayout == old then currentLayout = new end
-    end)
-    LEM:RegisterCallback("delete", function(name) M.db.layouts[name] = nil end)
-    -- switched on after login: the "layout" callback has already fired, so ask for it
-    local ok, name = pcall(LEM.GetActiveLayoutName, LEM)
-    if ok and name then currentLayout = name end
+    if mover then return end
+    mover = TT.EditModeFrame(container, "Buff Reminders", DEFAULT_POS, function() return M.db.layouts end,
+        function() Update() end)
 end
 
 -- Once a second re-check (buffs running out don't always send an event).
@@ -530,18 +452,6 @@ local function Queue()
     if queued then return end
     queued = true
     C_Timer.After(0.25, function() queued = false; Update() end)
-end
-
--- the single "Weapon poison" reminder became one per weapon: carry its settings over
-function M:OnLoad()
-    local db = M.db
-    for _, t in ipairs({ db.on, db.cast }) do
-        if t.poison ~= nil then
-            if t.poisonMH == nil then t.poisonMH = t.poison end
-            if t.poisonOH == nil then t.poisonOH = t.poison end
-            t.poison = nil
-        end
-    end
 end
 
 function M:Setup()
@@ -702,8 +612,7 @@ function M:BuildSettings(body, page)
     DbStepper("Icon size", "size", 20, 80, 2)
     DbStepper("Spacing", "spacing", 0, 30, 1)
     local reset = TT.Button(right, "Reset position", 120, function()
-        if currentLayout then db.layouts[currentLayout] = nil end
-        Position()
+        if mover then mover.Reset() end
     end)
     Place(reset, -12)
     local tip = TT.Label(right, "Never shown in combat. Move the row in Edit\nMode (\"Buff Reminders\"). Click an icon to cast\nit on yourself, right-click on your target. The\nnumber = group members in range missing it.", "GameFontDisableSmall")

@@ -17,6 +17,7 @@
 - **Dark Mode**: a target, focus, group or pet change only redoes the unit frames, and does far less work doing it.
 
 ### Changes
+- Every "press a key" button in the settings now works the same: click it, press the key; Esc or a second click cancels.
 - **Bulk Buy**: also works on vendors whose Shift-click pop-up is opened another way (it was still stopping at one stack).
 - **Automation**: selling grey items checks that the first sale went through. If the game refuses it, it switches to Blizzard's own "sell all junk", and tells you if that is blocked too instead of doing nothing.
 

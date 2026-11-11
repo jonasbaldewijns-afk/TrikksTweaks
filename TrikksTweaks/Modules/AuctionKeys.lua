@@ -91,43 +91,14 @@ function M:OnDisable() Bind() end              -- not enabled: clears the keys
 ---------------------------------------------------------------------------
 -- Settings: click a key button, then press the key (with Shift / Ctrl / Alt)
 ---------------------------------------------------------------------------
-local MODIFIERS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true }
-local function KeyButton(parent, get, set)
-    local b = TT.Button(parent, "", 150, nil)
-    local listening = false
-    local function Show()
-        if listening then b:SetText("|cff33ff99press a key...|r")
-        else b:SetText(get() ~= "" and GetBindingText(get()) or "(none)") end
-    end
-    b:SetScript("OnClick", function(self, button)
-        if button == "RightButton" then set(""); listening = false; self:EnableKeyboard(false); Show(); return end
-        listening = not listening
-        self:EnableKeyboard(listening)
-        Show()
-    end)
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    b:SetScript("OnKeyDown", function(self, key)
-        if not listening or MODIFIERS[key] then return end
-        listening = false
-        self:EnableKeyboard(false)
-        if key ~= "ESCAPE" then
-            local combo = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "")
-                .. (IsShiftKeyDown() and "SHIFT-" or "") .. key
-            set(combo)
-        end
-        Show()
-    end)
-    b.Refresh = Show
-    return b
-end
-
 function M:BuildSettings(body, page)
     local db = M.db
     local rows = {}
     local function Row(y, text, key)
         local l = TT.Label(body, text)
         l:SetPoint("TOPLEFT", 2, -y - 4)
-        local b = KeyButton(body, function() return db[key] or "" end, function(v) db[key] = v; Bind() end)
+        local b = TT.KeyButton(body, 150, function() return db[key] or "" end, function(v) db[key] = v; Bind() end,
+            { combo = true, clear = true, text = GetBindingText })
         b:SetPoint("TOPLEFT", 200, -y)
         rows[#rows + 1] = b
     end

@@ -34,13 +34,6 @@ local M = TT:RegisterModule("Minimap", {
 })
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 
-StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
-    text = "%s\n\nReload your UI now?",
-    button1 = RELOADUI or "Reload", button2 = LATER or "Later",
-    OnAccept = function() C_UI.Reload() end,
-    timeout = 0, whileDead = true, hideOnEscape = true,
-}
-
 ---------------------------------------------------------------------------
 -- Square shape
 ---------------------------------------------------------------------------
@@ -324,8 +317,11 @@ local function Guard(f)
     end)
 end
 
+-- where a frame lived before we moved it. Kept in our own table, not as a
+-- field on Blizzard's frame (a field of ours on their frame can "taint" it).
+local origParent = {}
 local function Remember(f)
-    if not f.ttOrig then f.ttOrig = { parent = f:GetParent(), points = {} } end
+    if not origParent[f] then origParent[f] = f:GetParent() end
 end
 
 -- The zone name bar at the top. On this client it is one button
@@ -438,8 +434,8 @@ PlaceElements = function()
                 f:ClearAllPoints()
                 f:SetPoint(pos, Minimap, pos, x, y)
                 used[pos] = used[pos] + (w > 0 and w or 20) + 2
-            elseif f.ttOrig and f:GetParent() == hiddenParent then
-                f:SetParent(f.ttOrig.parent)      -- back from hidden; Blizzard re-anchors it on reload
+            elseif origParent[f] and f:GetParent() == hiddenParent then
+                f:SetParent(origParent[f])      -- back from hidden; Blizzard re-anchors it on reload
             end
         end
     end
@@ -571,7 +567,7 @@ end
 function M:OnEnable() if IsLoggedIn() then ApplyAll() end end
 function M:OnDisable()
     ApplyStats(); binBtn:Hide(); bin:Hide(); fader:Hide()
-    StaticPopup_Show("TRIKKSTWEAKS_RELOAD", "Minimap module turned off. A reload brings the round minimap back.")
+    TT.AskReload("Minimap module turned off. A reload brings the round minimap back.")
 end
 
 function M:BuildSettings(body, page)

@@ -179,17 +179,10 @@ function M:Setup()
     end)
 end
 
-StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
-    text = "%s\n\nReload your UI now?",
-    button1 = RELOADUI or "Reload", button2 = LATER or "Later",
-    OnAccept = function() C_UI.Reload() end,
-    timeout = 0, whileDead = true, hideOnEscape = true,
-}
-
 function M:OnEnable() ApplyAll() end
 function M:OnDisable()
     ApplyAll()   -- puts colours back to normal
-    StaticPopup_Show("TRIKKSTWEAKS_RELOAD", "Dark Mode turned off. A reload restores everything exactly.")
+    TT.AskReload("Dark Mode turned off. A reload restores everything exactly.")
 end
 
 function M:BuildSettings(body, page)

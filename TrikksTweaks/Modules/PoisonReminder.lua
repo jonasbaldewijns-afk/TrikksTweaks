@@ -33,7 +33,7 @@ local M = TT:RegisterModule("PoisonReminder", {
 })
 
 local DEFAULT_POS = { point = "CENTER", x = 0, y = 170 }
-local container, inEditMode, currentLayout = nil, false, nil
+local container, mover                       -- mover: the Edit Mode handle (TT.EditModeFrame)
 local icons = {}
 
 ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ local shownBefore = 0
 local function Update()
     if not container or InCombatLockdown() then return end
     local db = M.db
-    local preview = inEditMode
+    local preview = mover and mover.editing
     local show = {}
     local allowed = M.enabled and CLASS == "ROGUE" and not UnitIsDeadOrGhost("player") and not UnitOnTaxi("player")
         and not (UnitInVehicle and UnitInVehicle("player")) and not (db.hideResting and IsResting())
@@ -236,37 +236,11 @@ end
 ---------------------------------------------------------------------------
 -- Edit Mode, events
 ---------------------------------------------------------------------------
-local function Position()
-    if not container then return end
-    local p = currentLayout and M.db.layouts[currentLayout] or DEFAULT_POS
-    container:ClearAllPoints()
-    container:SetPoint(p.point, UIParent, p.point, p.x, p.y)
-end
-
-local registered = false
+local function Position() if mover then mover.Position() end end
 local function RegisterEditMode()
-    local LEM = LibStub and LibStub("LibEditMode", true)
-    if registered or not LEM then return end
-    registered = true
-    LEM:AddFrame(container, function(frame, layoutName)
-        local cx, cy = frame:GetCenter()
-        local ux, uy = UIParent:GetCenter()
-        local es, ues = frame:GetEffectiveScale(), UIParent:GetEffectiveScale()
-        local x, y = (cx * es - ux * ues) / es, (cy * es - uy * ues) / es
-        M.db.layouts[layoutName] = { point = "CENTER", x = x, y = y }
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
-    end, DEFAULT_POS, "Poison Reminder")
-    LEM:RegisterCallback("layout", function(layoutName) currentLayout = layoutName; Position() end)
-    LEM:RegisterCallback("enter", function() inEditMode = true; Update() end)
-    LEM:RegisterCallback("exit", function() inEditMode = false; Update() end)
-    LEM:RegisterCallback("rename", function(old, new)
-        M.db.layouts[new], M.db.layouts[old] = M.db.layouts[old], nil
-        if currentLayout == old then currentLayout = new end
-    end)
-    LEM:RegisterCallback("delete", function(name) M.db.layouts[name] = nil end)
-    local ok, name = pcall(LEM.GetActiveLayoutName, LEM)
-    if ok and name then currentLayout = name end
+    if mover then return end
+    mover = TT.EditModeFrame(container, "Poison Reminder", DEFAULT_POS, function() return M.db.layouts end,
+        function() Update() end)
 end
 
 local ev, ticker, pendingApply = nil, nil, false

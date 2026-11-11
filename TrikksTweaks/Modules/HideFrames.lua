@@ -78,17 +78,10 @@ function M:Setup()
     end)
 end
 
-StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
-    text = "%s\n\nReload your UI now?",
-    button1 = RELOADUI or "Reload", button2 = LATER or "Later",
-    OnAccept = function() C_UI.Reload() end,
-    timeout = 0, whileDead = true, hideOnEscape = true,
-}
-
 function M:OnEnable() Apply() end
 function M:OnDisable()
     Apply()
-    StaticPopup_Show("TRIKKSTWEAKS_RELOAD", "Hide Blizzard Frames turned off. A reload brings the boss banner back.")
+    TT.AskReload("Hide Blizzard Frames turned off. A reload brings the boss banner back.")
 end
 
 function M:BuildSettings(body, page)

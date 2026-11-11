@@ -192,19 +192,8 @@ function M:BuildSettings(body, page)
     end
     local kl = TT.Label(body, "Main key:")
     kl:SetPoint("TOPLEFT", 4, -y - 4)
-    local keyBtn = TT.Button(body, "", 120, nil)
+    local keyBtn = TT.KeyButton(body, 120, function() return db.key end, function(v) db.key = v end)
     keyBtn:SetPoint("TOPLEFT", 120, -y)
-    keyBtn:SetScript("OnClick", function(self)
-        self:SetText("Press a key...")
-        self:EnableKeyboard(true)
-        self:SetPropagateKeyboardInput(false)
-    end)
-    keyBtn:SetScript("OnKeyDown", function(self, key)
-        if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then return end
-        if key ~= "ESCAPE" then db.key = key end
-        self:EnableKeyboard(false)
-        self:SetText(db.key)
-    end)
     y = y + 32
     Check("numbers", "Number keys 1-9 pick options and rewards")
     Check("showNumbers", "Show the numbers in front of the options", true)
@@ -217,6 +206,6 @@ function M:BuildSettings(body, page)
     help:SetPoint("TOPLEFT", 0, -y - 8)
     page.OnPageShow = function()
         for key, cb in pairs(checks) do cb:SetChecked(db[key]) end
-        keyBtn:SetText(db.key)
+        keyBtn.Refresh()
     end
 end

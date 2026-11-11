@@ -279,17 +279,10 @@ function M:Setup()
     end)
 end
 
-StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] or {
-    text = "%s\n\nReload your UI now?",
-    button1 = RELOADUI or "Reload", button2 = LATER or "Later",
-    OnAccept = function() C_UI.Reload() end,
-    timeout = 0, whileDead = true, hideOnEscape = true,
-}
-
 function M:OnEnable() if IsLoggedIn() then ApplyFade(); ApplyTweaks(); ApplyCopy(); HookFrames() end end
 function M:OnDisable()
     ApplyFade(); ApplyTweaks(); ApplyCopy()
-    StaticPopup_Show("TRIKKSTWEAKS_RELOAD", "Chat module turned off. A reload puts the edit box and clamping back.")
+    TT.AskReload("Chat module turned off. A reload puts the edit box and clamping back.")
 end
 
 function M:BuildSettings(body, page)

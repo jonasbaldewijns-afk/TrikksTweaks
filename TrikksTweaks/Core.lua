@@ -231,6 +231,113 @@ function TT.Scroll(parent)
 end
 
 -- "Label: value  [-] [+]"  (Shift-click = 5x step)
+-- A button that shows a key and lets you pick another: click it, press the
+-- key. Esc or a second click cancels. get() returns the saved key ("" = none),
+-- set(key) saves the new one. opts (all optional):
+--   combo = true      the key with its modifiers ("SHIFT-SPACE"); or a function(key) that builds it
+--   clear = true      right-click sets it to "" (no key)
+--   text  = function  how to show a key (default: as saved)
+-- b.Refresh() shows the saved key again (call it when the page opens).
+local MODIFIER_KEYS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
+                        LMETA = true, RMETA = true }
+function TT.KeyButton(parent, width, get, set, opts)
+    opts = opts or {}
+    local b = TT.Button(parent, "", width, nil)
+    local listening = false
+    local function Show()
+        if listening then b:SetText("|cff33ff99press a key...|r"); return end
+        local key = get() or ""
+        b:SetText(key == "" and "(none)" or (opts.text and opts.text(key) or key))
+    end
+    local function Stop() listening = false; b:EnableKeyboard(false); Show() end
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then
+            if opts.clear then set("") end
+            Stop()
+            return
+        end
+        listening = not listening
+        b:EnableKeyboard(listening)
+        Show()
+    end)
+    b:SetScript("OnKeyDown", function(_, key)
+        if not listening or MODIFIER_KEYS[key] then return end       -- a modifier alone: wait for the real key
+        if key ~= "ESCAPE" then
+            if type(opts.combo) == "function" then key = opts.combo(key)
+            elseif opts.combo then
+                key = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "")
+                    .. (IsShiftKeyDown() and "SHIFT-" or "") .. key
+            end
+            set(key)
+        end
+        Stop()
+    end)
+    b:SetScript("OnHide", function() if listening then Stop() end end)   -- page closed while waiting
+    b.Refresh = Show
+    return b
+end
+
+-- "<text>  Reload your UI now?" with Reload / Later buttons
+function TT.AskReload(text)
+    if not StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] then
+        StaticPopupDialogs["TRIKKSTWEAKS_RELOAD"] = {
+            text = "%s\n\nReload your UI now?",
+            button1 = RELOADUI or "Reload", button2 = LATER or "Later",
+            OnAccept = function() C_UI.Reload() end,
+            timeout = 0, whileDead = true, hideOnEscape = true,
+        }
+    end
+    StaticPopup_Show("TRIKKSTWEAKS_RELOAD", text)
+end
+
+-- Makes one of our frames movable in Blizzard's Edit Mode (through LibEditMode),
+-- with its own place per Edit Mode layout.
+--   title       its name in Edit Mode
+--   default     { point =, x =, y = } where it sits until you move it
+--   layouts     function returning the saved table: layout name -> { point, x, y }
+--   onEditMode  function(entering), optional: Edit Mode was opened / closed
+-- Returns a handle: .Position() puts the frame where it belongs, .Reset()
+-- forgets this layout's place, .editing = Edit Mode is open right now.
+-- Without the library the frame simply stays at its default place.
+function TT.EditModeFrame(frame, title, default, layouts, onEditMode)
+    local mover = { editing = false, layout = nil }
+    function mover.Position()
+        local p = mover.layout and layouts()[mover.layout] or default
+        frame:ClearAllPoints()
+        frame:SetPoint(p.point, UIParent, p.point, p.x, p.y)
+    end
+    function mover.Reset()
+        if mover.layout then layouts()[mover.layout] = nil end
+        mover.Position()
+    end
+    local LEM = LibStub and LibStub("LibEditMode", true)
+    if not LEM then return mover end
+    LEM:AddFrame(frame, function(f, layoutName)
+        -- keep it anchored by its centre, so a row of icons grows evenly both ways
+        local cx, cy = f:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        local es, ues = f:GetEffectiveScale(), UIParent:GetEffectiveScale()
+        local x, y = (cx * es - ux * ues) / es, (cy * es - uy * ues) / es
+        layouts()[layoutName] = { point = "CENTER", x = x, y = y }
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", x, y)
+    end, default, title)
+    LEM:RegisterCallback("layout", function(layoutName) mover.layout = layoutName; mover.Position() end)
+    LEM:RegisterCallback("enter", function() mover.editing = true; if onEditMode then onEditMode(true) end end)
+    LEM:RegisterCallback("exit", function() mover.editing = false; if onEditMode then onEditMode(false) end end)
+    LEM:RegisterCallback("rename", function(old, new)
+        local t = layouts()
+        t[new], t[old] = t[old], nil
+        if mover.layout == old then mover.layout = new end
+    end)
+    LEM:RegisterCallback("delete", function(name) layouts()[name] = nil end)
+    -- made after login: the "layout" callback has already fired, so ask for it
+    local ok, name = pcall(LEM.GetActiveLayoutName, LEM)
+    if ok and name then mover.layout = name end
+    return mover
+end
+
 function TT.Stepper(parent, text, get, set, min, max, step)
     local row = CreateFrame("Frame", nil, parent)
     row:SetSize(250, 24)

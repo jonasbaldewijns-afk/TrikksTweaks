@@ -29,7 +29,7 @@ local M = TT:RegisterModule("LootFeed", {
 local DEFAULT_POS = { point = "CENTER", x = 300, y = 0 }
 local container, ticker
 local active, pool = {}, {}         -- entries on screen (newest first), spare entry frames
-local inEditMode, currentLayout, testing = false, nil, false
+local mover, testing = nil, false           -- mover: the Edit Mode handle (TT.EditModeFrame)
 local blocked = {}                  -- blacklist as a set
 
 ---------------------------------------------------------------------------
@@ -348,33 +348,10 @@ end
 ---------------------------------------------------------------------------
 -- Edit Mode
 ---------------------------------------------------------------------------
-local function Position()
-    local p = currentLayout and M.db.layouts[currentLayout] or DEFAULT_POS
-    container:ClearAllPoints()
-    container:SetPoint(p.point, UIParent, p.point, p.x, p.y)
-end
 local function RegisterEditMode()
-    local LEM = LibStub and LibStub("LibEditMode", true)
-    if not LEM then return end
-    LEM:AddFrame(container, function(frame, layoutName)
-        local cx, cy = frame:GetCenter()
-        local ux, uy = UIParent:GetCenter()
-        local es, ues = frame:GetEffectiveScale(), UIParent:GetEffectiveScale()
-        local x, y = (cx * es - ux * ues) / es, (cy * es - uy * ues) / es
-        M.db.layouts[layoutName] = { point = "CENTER", x = x, y = y }
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
-    end, DEFAULT_POS, "Loot Feed")
-    LEM:RegisterCallback("layout", function(layoutName) currentLayout = layoutName; Position() end)
-    LEM:RegisterCallback("enter", function() inEditMode = true; if M.enabled then ShowSamples(true) end end)
-    LEM:RegisterCallback("exit", function() inEditMode = false; ShowSamples(false) end)
-    LEM:RegisterCallback("rename", function(old, new)
-        M.db.layouts[new], M.db.layouts[old] = M.db.layouts[old], nil
-        if currentLayout == old then currentLayout = new end
-    end)
-    LEM:RegisterCallback("delete", function(name) M.db.layouts[name] = nil end)
-    local ok, name = pcall(LEM.GetActiveLayoutName, LEM)
-    if ok and name then currentLayout = name end
+    if mover then return end
+    mover = TT.EditModeFrame(container, "Loot Feed", DEFAULT_POS, function() return M.db.layouts end,
+        function(entering) if not entering then ShowSamples(false) elseif M.enabled then ShowSamples(true) end end)
 end
 
 ---------------------------------------------------------------------------
@@ -389,7 +366,7 @@ function M:Setup()
     container:SetSize(M.db.width, M.db.height)
     container:SetClampedToScreen(true)
     RegisterEditMode()
-    Position()
+    mover.Position()
     ev = CreateFrame("Frame")
     ev:SetScript("OnEvent", function(_, _, msg) OnLoot(msg) end)
 end
@@ -398,7 +375,7 @@ function M:OnEnable()
     RebuildBlocked()
     container:Show()
     ev:RegisterEvent("CHAT_MSG_LOOT")
-    if inEditMode then ShowSamples(true) end
+    if mover.editing then ShowSamples(true) end
 end
 
 function M:OnDisable()
@@ -476,5 +453,5 @@ function M:BuildSettings(body, page)
 
     page.OnPageShow = function() for _, f in ipairs(refreshers) do f() end end
     -- test entries go away when you leave the page
-    body:HookScript("OnHide", function() if testing and not inEditMode then ShowSamples(false) end end)
+    body:HookScript("OnHide", function() if testing and not (mover and mover.editing) then ShowSamples(false) end end)
 end
